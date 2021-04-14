@@ -1,0 +1,39 @@
+# store connected.conf in .secrets folder before docker image build
+
+# required: sets the static ip address for the local host, specified in the format <ip>/<bit length of mask>
+# 192.168.20.2/24 for static ip of 192.168.20.2 with subnet mask of 255.255.255.0
+ip = 192.168.1.100/24
+
+# required: sets the remote DNS server that will be used when the VPN connection is active.
+# This address will be set in the resolv.conf and used as the system resolver. This server will likely be provided
+# by the VPN provider and should be accessible through the VPN tunnel. Do not use ISP DNS here.
+remote_dns = 4.2.2.1
+
+# required: this address will be used when setting any static routes and should be an address that is valid on your router.
+# This address will not be set as the default gateway since no default gateway will be set in this configuration.
+# Instead, static routes will be configured to your VPN server IPs via the gateway address, as well as any split_tunnel_hosts
+# that you specify. In this configuration, no traffic will be able to reach the Internet from your host unless it is
+# through the VPN tunnel or one of the static routes that will be created.
+gateway = 192.168.1.1
+
+# optional: connected will ping this ip through the VPN connection every minute to verify connectivity to the internet.
+# Default value is 1.1.1.1, Cloudflare's DNS servers which will be used if nothing is specified here.
+heartbeat_ip = 1.1.1.1
+
+# optional: network interface name. If not specified, eth0 will be used.
+nic = eth0
+
+# optional: This is a space separated list of hosts and IP addresses on the Internet that you want to be able to access
+# outside of the VPN tunnel. Any addresses you enter here will have static routes configured so that they can be accessed
+# directly.  It is not necessary to enter any addresses on your local network since they are accessible by default.
+split_tunnel_hosts = domain.com 1.2.3.4
+
+# optional: This dns server will only be used to resolve split_tunnel_hosts hostnames to IPs
+# This lookup happens before the VPN connection is active. After the VPN connection is up, the system resolver will switch
+# to the remote_dns address. If this is not set, the system resolver will be used instead.
+local_dns = 192.168.1.1
+
+# optional: if hostname set, connected will use dns_tool (dnsup by default) to update the hostname with the ip of the vpn endpoint
+# dnsup will update cloudflare hosted dns records
+hostname = home.personaldomain.com
+dns_tool = /usr/bin/dnsup
