@@ -115,6 +115,9 @@ type Deluge struct {
 func (d *Deluge) start() bool {
 	p("start %s torrent check", d.kind)
 	if d.deleteDone {
+		e := d.client.Connect()
+		chkFatal(e)
+		defer d.client.Close()
 		d.getTorrents()
 		for _, dt := range d.torrents {
 			p("torrent finished: %s", dt.name)
