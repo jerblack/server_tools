@@ -522,7 +522,7 @@ func isDirEmpty(name string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	defer chk(f.Close())
+	defer f.Close()
 
 	// read in ONLY one file
 	_, err = f.Readdir(1)
