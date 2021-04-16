@@ -23,7 +23,8 @@ var (
 	confFile string
 
 	procFolder, preProcFolder, convertFolder, recycleFolder, torFolder string
-	seedMarker                                                         = ".grabbed"
+
+	seedMarker = ".grabbed"
 
 	torFileInterval = 30
 	convertInterval = 60
@@ -80,7 +81,7 @@ func (d *Deluge) getClient() {
 func (d *Deluge) removeFinishedTorrents() {
 	e := d.client.Connect()
 	chkFatal(e)
-	defer chkFatal(d.client.Close())
+	defer d.client.Close()
 
 	var torrents []DelugeTorrent
 	tors, e := d.client.TorrentsStatus(delugeclient.StateUnspecified, nil)
@@ -193,7 +194,7 @@ func (d *Deluge) checkFinishedTorrents() {
 func (d *Deluge) addMagnet(magnetPath string) {
 	e := d.client.Connect()
 	chkFatal(e)
-	defer chkFatal(d.client.Close())
+	defer d.client.Close()
 	p("adding magnet file to %s: %s", d.name, magnetPath)
 	f, e := os.ReadFile(magnetPath)
 	chkFatal(e)
@@ -209,12 +210,13 @@ func (d *Deluge) addMagnet(magnetPath string) {
 func (d *Deluge) addTorrent(torrentPath string) {
 	e := d.client.Connect()
 	chkFatal(e)
-	defer chkFatal(d.client.Close())
+	defer d.client.Close()
 	p("adding torrent file to %s: %s", d.name, torrentPath)
 	t, e := os.ReadFile(torrentPath)
 	chkFatal(e)
 	encoded := base64.StdEncoding.EncodeToString(t)
-	hash, e := d.client.AddTorrentFile(torrentPath, encoded, nil)
+	fName := filepath.Base(torrentPath)
+	hash, e := d.client.AddTorrentFile(fName, encoded, nil)
 	chkFatal(e)
 	p("add torrent file successful: %s", hash)
 	rec := strings.Replace(torrentPath, torFolder, recycleFolder, 1)
