@@ -1,0 +1,72 @@
+# hydra.conf should be in the same folder as main.go at the time of compilation. It will be embedded directly into the
+#   compiled binary.
+
+
+# finished downloads are dropped into pre_proc_folder
+# hydra extracts everything in the pre_proc_folder and remuxes video as needed, and then moves everything to proc_folder
+# if anything needed conversion, it gets moves to the convert_folder. Hydra is also monitoring convert_folder and
+# automatically converts anything in that folder and moves it to proc_folder on completion
+
+pre_proc_folder = /x/_pre_proc
+proc_folder = /x/_proc
+convert_folder = /x/_convert
+
+# if set, the following files will be added here:
+#       added torrent files, added magnet files
+#       if a file is moved to a folder with a file with the same name, the higher quality file will be kept and the
+#       lower quality file will be moved here. This is rare.
+recycle_folder = /x/.config/_recycle
+
+# New .torrent and .magnet files can be dropped here, and they will parsed and added to either:
+#       the default client
+#       the client with a matching tracker
+# This allows you to have separate torrent clients handling different trackers (public vs. private for example)
+# Torrents and magnets will added directly to the deluge daemon and the file will be moved to the recycle_folder
+torrent_folder = /x/.config/_tor_new
+
+
+# each section below is a separate deluge daemon
+# daemon options:
+#   default = deluge where torrents sent by default if magnet or torrent file does not contain a matching tracker
+#   ip, port, user, pass = connection details specific to this instance of the deluge daemon
+#   keep_finished = true or false.
+#       true -> torrents are not removed from deluge. instead all new files in finished_folder are hard linked to pre_proc_folder
+#           for further processing. After linking, a marker with the file name + a .grabbed extension is added to prevent
+#           future linking. Deleting torrents from deluge later will not remove those markers, so hydra will automatically
+#           remove any orphaned markers and empty folders in the finished_folder.
+#       false -> finished torrents are paused, removed from the deluge daemon, and the files are moved to the pre_proc_folder
+#           for further processing.
+#   finished_folder = folder where hydra will look for finished torrents. it's recommended to use the deluge option under
+#       Downloads > Folders for "Move completed to" and set it to the same value you give for finished_folder
+#   trackers = space separated list of the trackers that this particular daemon will handle the downloads for. Only necessary
+#       if you are configuring multiple deluge daemons. If a new magnet or torrent file doesn't contain any of the specified
+#       trackers, it will be sent to the default tracker instead.
+
+[public]
+default = true
+ip = 192.168.100.10
+port = 50001
+user = deluge_user
+pass = deluge_pass
+keep_finished = false
+finished_folder = /x/_tor_done_pub
+
+[tl]
+ip = 192.168.100.10
+port = 50002
+user = deluge_user
+pass = deluge_pass
+keep_finished = false
+finished_folder = /x/_tor_done_tl
+trackers = torrentleech.org tleechreload.org
+
+[ipt]
+ip = 192.168.100.10
+port = 50003
+user = deluge_user
+pass = deluge_pass
+keep_finished = true
+finished_folder = /x/_tor_done_ipt
+trackers = stackoverflow.tech bgp.technology empirehost.me
+
+

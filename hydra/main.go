@@ -1,17 +1,17 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	_ "embed"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	delugeclient "github.com/gdm85/go-libdeluge"
 	"io"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -19,62 +19,21 @@ import (
 )
 
 var (
-	procFolder    = "/x/_proc"
-	preProcFolder = "/x/_pre_proc"
+	//go:embed hydra.conf
+	confFile string
 
-	convertFolder = "/x/_convert"
-	recycleFolder = "/x/.config/_recycle"
-
-	torFolder      = "/x/.config/_tor_new"
-	privTorFolder  = "/x/.config/_tor_new_priv"
-	pubTorFolder   = "/x/.config/_tor_new_pub"
-	privDoneFolder = "/x/_tor_done_priv"
-	pubDoneFolder  = "/x/_tor_done_pub"
-	seedMarker     = ".grabbed"
+	procFolder, preProcFolder, convertFolder, recycleFolder, torFolder string
+	seedMarker                                                         = ".grabbed"
 
 	torFileInterval = 30
 	convertInterval = 60
 	delugeInterval  = 60
-	privTrackers    = []string{
-		"stackoverflow.tech",
-		"bgp.technology",
-		"empirehost.me",
-		"torrentleech.org",
-		"tleechreload.org",
-	}
-	pubDeluge, privDeluge *Deluge
-	user, pw              string
-	//go:embed deluge
-	delugeFile string
-	torFile    TorFile
-	proc       Proc
+
+	delugeDaemons map[string]*Deluge
+	defaultDeluge *Deluge
+	torFile       TorFile
+	proc          Proc
 )
-
-func main() {
-	p("starting hydra")
-	getDelugeAuth()
-	getDelugeClients()
-	go torFile.start()
-	go proc.muxConvert()
-
-	for {
-		time.Sleep(time.Duration(delugeInterval) * time.Second)
-		found1 := pubDeluge.start()
-		found2 := privDeluge.start()
-		if found1 || found2 {
-			proc.extractPreProc()
-			proc.muxPreProc()
-			mvTree(preProcFolder, procFolder, true)
-		}
-	}
-}
-
-func getDelugeAuth() {
-	delugeFile = strings.TrimSpace(delugeFile)
-	authArr := strings.Split(delugeFile, "\n")
-	user = strings.TrimSpace(authArr[0])
-	pw = strings.TrimSpace(authArr[1])
-}
 
 type DelugeTorrent struct {
 	name, id, relPath string
@@ -106,37 +65,24 @@ func (dt *DelugeTorrent) move() {
 }
 
 type Deluge struct {
-	client                     *delugeclient.Client
-	torFiles, doneFolder, kind string
-	deleteDone                 bool
-	torrents                   []DelugeTorrent
+	name, ip, user, pass, doneFolder string
+	trackers                         []string
+	port                             uint
+	keepDone                         bool
+	client                           *delugeclient.Client
 }
 
-func (d *Deluge) start() bool {
-	p("start %s torrent check", d.kind)
-	if d.deleteDone {
-		e := d.client.Connect()
-		chkFatal(e)
-		defer d.client.Close()
-		d.getTorrents()
-		for _, dt := range d.torrents {
-			p("torrent finished: %s", dt.name)
-			e := dt.pause()
-			if e != nil {
-				p(e.Error())
-				continue
-			}
-			_, e = dt.remove()
-			chk(e)
-			dt.move()
-		}
-	} else {
-		d.linkSeeds()
-	}
-	return len(d.torrents) > 0
+func (d *Deluge) getClient() {
+	d.client = delugeclient.NewV1(delugeclient.Settings{
+		Port: d.port, Login: d.user, Password: d.pass,
+	})
 }
-func (d *Deluge) getTorrents() {
-	d.torrents = []DelugeTorrent{}
+func (d *Deluge) removeFinishedTorrents() {
+	e := d.client.Connect()
+	chkFatal(e)
+	defer chkFatal(d.client.Close())
+
+	var torrents []DelugeTorrent
 	tors, e := d.client.TorrentsStatus(delugeclient.StateUnspecified, nil)
 	chk(e)
 	for k, v := range tors {
@@ -144,16 +90,13 @@ func (d *Deluge) getTorrents() {
 		dt.id = k
 		dt.name = v.Name
 		dt.deluge = d
-		//p(v.Name)
-		//p("%v %v %v %v %v %v", v.IsSeed, v.IsFinished, v.State == "Seeding", v.Progress == 100, v.State, v.Progress)
 		if v.IsSeed && v.IsFinished && v.State == "Seeding" && v.Progress == 100 {
-			path := filepath.Join(pubDoneFolder, v.Files[0].Path)
-			//p(path)
+			path := filepath.Join(d.doneFolder, v.Files[0].Path)
 			_, e = os.Stat(path)
 			if e == nil {
 				var files []string
 				for _, f := range v.Files {
-					files = append(files, filepath.Join(pubDoneFolder, f.Path))
+					files = append(files, filepath.Join(d.doneFolder, f.Path))
 				}
 				dt.files = files
 
@@ -162,11 +105,22 @@ func (d *Deluge) getTorrents() {
 					dt.relPath = strings.SplitN(_p, "/", 2)[0]
 				}
 			}
-			d.torrents = append(d.torrents, dt)
+			torrents = append(torrents, dt)
 		}
 	}
+	for _, dt := range torrents {
+		p("torrent finished: %s", dt.name)
+		e = dt.pause()
+		if e != nil {
+			p(e.Error())
+			continue
+		}
+		_, e = dt.remove()
+		chk(e)
+		dt.move()
+	}
 }
-func (d *Deluge) linkSeeds() {
+func (d *Deluge) linkFinished() {
 	allFiles := make(map[string][]string)
 	allFolders := make(map[string][]string)
 
@@ -201,7 +155,7 @@ func (d *Deluge) linkSeeds() {
 				if strings.HasSuffix(f, seedMarker) {
 					// delete marker with no marked file
 					markedFile := strings.TrimSuffix(f, seedMarker)
-					if !hasString(allFiles[k], markedFile) {
+					if !isStringVal(allFiles[k], markedFile) {
 						p("deleting orphan marker: %s\n", f)
 						err = os.Remove(f)
 						chkFatal(err)
@@ -209,7 +163,7 @@ func (d *Deluge) linkSeeds() {
 				} else {
 					// link file with no marker, create marker
 					marker := f + seedMarker
-					if !hasString(allFiles[k], marker) {
+					if !isStringVal(allFiles[k], marker) {
 						relPath := strings.TrimPrefix(f, d.doneFolder)
 						preProcPath := filepath.Join(preProcFolder, relPath)
 						preProcRel, _ := filepath.Split(preProcPath)
@@ -228,25 +182,123 @@ func (d *Deluge) linkSeeds() {
 		}
 	}
 }
-
-func getDelugeClients() {
-	pubDeluge = &Deluge{
-		client: delugeclient.NewV1(delugeclient.Settings{
-			Port: 5051, Login: user, Password: pw,
-		}),
-		torFiles:   pubTorFolder,
-		doneFolder: pubDoneFolder,
-		deleteDone: true,
-		kind:       "public",
+func (d *Deluge) checkFinishedTorrents() {
+	if d.keepDone {
+		d.linkFinished()
+	} else {
+		d.removeFinishedTorrents()
 	}
-	privDeluge = &Deluge{
-		client: delugeclient.NewV1(delugeclient.Settings{
-			Port: 5050, Login: user, Password: pw,
-		}),
-		torFiles:   privTorFolder,
-		doneFolder: privDoneFolder,
-		deleteDone: true,
-		kind:       "private",
+
+}
+func (d *Deluge) addMagnet(magnetPath string) {
+	e := d.client.Connect()
+	chkFatal(e)
+	defer chkFatal(d.client.Close())
+	p("adding magnet file to %s: %s", d.name, magnetPath)
+	f, e := os.ReadFile(magnetPath)
+	chkFatal(e)
+	mag := string(f)
+	hash, e := d.client.AddTorrentMagnet(mag, nil)
+	chkFatal(e)
+	p("add magnet file successful: %s", hash)
+	rec := strings.Replace(magnetPath, torFolder, recycleFolder, 1)
+	rec = getAltPath(rec)
+	e = os.Rename(magnetPath, rec)
+	chkFatal(e)
+}
+func (d *Deluge) addTorrent(torrentPath string) {
+	e := d.client.Connect()
+	chkFatal(e)
+	defer chkFatal(d.client.Close())
+	p("adding torrent file to %s: %s", d.name, torrentPath)
+	t, e := os.ReadFile(torrentPath)
+	chkFatal(e)
+	encoded := base64.StdEncoding.EncodeToString(t)
+	hash, e := d.client.AddTorrentFile(torrentPath, encoded, nil)
+	chkFatal(e)
+	p("add torrent file successful: %s", hash)
+	rec := strings.Replace(torrentPath, torFolder, recycleFolder, 1)
+	rec = getAltPath(rec)
+	e = os.Rename(torrentPath, rec)
+	chkFatal(e)
+}
+
+func parseConfig() {
+	delugeDaemons = make(map[string]*Deluge)
+	_d := Deluge{}
+	deluge := &_d
+
+	lines := strings.Split(confFile, "\n")
+	reEq := regexp.MustCompile(`\s*=\s*`)
+	reBrackets := regexp.MustCompile(`(^\[|]$)`)
+	reTrue := regexp.MustCompile(`(?i)^(true|t|yes)$`)
+	reSpaces := regexp.MustCompile(`\s+`)
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "#") || line == "" {
+			continue
+		}
+		r := strings.NewReplacer("\"", "", "'", "")
+		line = r.Replace(line)
+		line = reEq.ReplaceAllString(line, "=")
+
+		if strings.HasPrefix(line, "[") {
+			name := reBrackets.ReplaceAllString(line, "")
+			d := Deluge{
+				name: name,
+			}
+			delugeDaemons[name] = &d
+			if defaultDeluge == nil {
+				defaultDeluge = &d
+			}
+			deluge = &d
+		} else {
+			kv := strings.Split(line, "=")
+			k, v := kv[0], kv[1]
+
+			switch k {
+			case "pre_proc_folder":
+				preProcFolder = v
+			case "proc_folder":
+				procFolder = v
+			case "convert_folder":
+				convertFolder = v
+			case "recycle_folder":
+				recycleFolder = v
+			case "torrent_folder":
+				torFolder = v
+			case "default":
+				if reTrue.MatchString(v) {
+					defaultDeluge = deluge
+				}
+			case "ip":
+				deluge.ip = v
+			case "port":
+				i, e := strconv.Atoi(v)
+				chkFatal(e)
+				deluge.port = uint(i)
+			case "user":
+				deluge.user = v
+			case "pass":
+				deluge.pass = v
+			case "keep_finished":
+				if reTrue.MatchString(v) {
+					deluge.keepDone = true
+				}
+			case "finished_folder":
+				deluge.doneFolder = v
+			case "trackers":
+				v = reSpaces.ReplaceAllString(v, " ")
+				for _, t := range strings.Split(v, " ") {
+					deluge.trackers = append(deluge.trackers, t)
+				}
+			}
+		}
+	}
+}
+func getDelugeClients() {
+	for _, d := range delugeDaemons {
+		d.getClient()
 	}
 }
 
@@ -254,8 +306,6 @@ type TorFile struct{}
 
 func (tf *TorFile) start() {
 	p("torFile started and monitoring %s", torFolder)
-	p("private torrent path: %s", privTorFolder)
-	p("public torrent path: %s", pubTorFolder)
 	for {
 		tf.getFiles()
 		time.Sleep(time.Duration(torFileInterval) * time.Second)
@@ -287,48 +337,29 @@ func (tf *TorFile) getFiles() {
 	}
 }
 func (tf *TorFile) magnet(magnetPath string) {
-	e := pubDeluge.client.Connect()
-	chk(e)
-	defer pubDeluge.client.Close()
-	p("adding magnet file: %s", magnetPath)
-	f, e := os.ReadFile(magnetPath)
+	b, e := os.ReadFile(magnetPath)
 	chkFatal(e)
-	mag := string(f)
-	hash, e := pubDeluge.client.AddTorrentMagnet(mag, nil)
-	chk(e)
-	if e != nil {
-		p("failed to add magnet file: %s")
-	} else {
-		p("add magnet file successful: %s", hash)
-		rec := strings.Replace(magnetPath, torFolder, recycleFolder, 1)
-		rec = getAltPath(rec)
-		e = os.Rename(magnetPath, rec)
-		chkFatal(e)
+	mag := string(b)
+	for _, dd := range delugeDaemons {
+		if containsString(mag, dd.trackers...) {
+			dd.addMagnet(magnetPath)
+			return
+		}
 	}
+	defaultDeluge.addMagnet(magnetPath)
 
 }
 func (tf *TorFile) torrent(torrentPath string) {
-	p("adding torrent file: %s", torrentPath)
-	file, err := os.Open(torrentPath)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer file.Close()
-	srcFolder := pubTorFolder
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-		for _, priv := range privTrackers {
-			if strings.Contains(line, priv) {
-				srcFolder = privTorFolder
-			}
+	b, e := os.ReadFile(torrentPath)
+	chkFatal(e)
+	mag := string(b)
+	for _, dd := range delugeDaemons {
+		if containsString(mag, dd.trackers...) {
+			dd.addTorrent(torrentPath)
+			return
 		}
 	}
-	tor := strings.Replace(torrentPath, torFolder, srcFolder, 1)
-	tor = getAltPath(tor)
-	e := os.Rename(torrentPath, tor)
-	chkFatal(e)
-	p("moved to %s", tor)
+	defaultDeluge.addTorrent(torrentPath)
 }
 
 type Proc struct{}
@@ -359,6 +390,27 @@ func (pr *Proc) muxConvert() {
 
 }
 
+func main() {
+	parseConfig()
+	getDelugeClients()
+	go torFile.start()
+	go proc.muxConvert()
+
+	for {
+		time.Sleep(time.Duration(delugeInterval) * time.Second)
+		for _, dd := range delugeDaemons {
+			dd.checkFinishedTorrents()
+		}
+		empty, e := isDirEmpty(preProcFolder)
+		chkFatal(e)
+		if !empty {
+			proc.extractPreProc()
+			proc.muxPreProc()
+			mvTree(preProcFolder, procFolder, true)
+		}
+	}
+
+}
 func mvTree(src, dst string, removeEmpties bool) {
 	p("moving tree %s to %s", src, dst)
 	var files []string
@@ -468,7 +520,7 @@ func isDirEmpty(name string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	defer f.Close()
+	defer chk(f.Close())
 
 	// read in ONLY one file
 	_, err = f.Readdir(1)
@@ -512,7 +564,7 @@ func chk(err error) {
 		fmt.Println("----------------------")
 	}
 }
-func hasString(slice []string, val string) bool {
+func isStringVal(slice []string, val string) bool {
 	for _, item := range slice {
 		if item == val {
 			return true
@@ -520,6 +572,15 @@ func hasString(slice []string, val string) bool {
 	}
 	return false
 }
+func containsString(s string, subs ...string) bool {
+	for _, sub := range subs {
+		if sub != "" && strings.Contains(s, sub) {
+			return true
+		}
+	}
+	return false
+}
+
 func run(args ...string) error {
 	cmd := exec.Command(args[0], args[1:]...)
 
