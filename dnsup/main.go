@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -27,8 +28,8 @@ import (
 */
 
 var (
-	//go:embed cf
-	cfFile string
+	//go:embed dnsup.conf
+	confFile string
 
 	apiKey, apiMail  string
 	hostname, ip     string
@@ -37,20 +38,28 @@ var (
 	hostIdFile       = "/tmp/host_id"
 )
 
-func getAuth() {
-	cfFile = strings.TrimSpace(cfFile)
-	if cfFile != "" {
-		cf := strings.Split(cfFile, "\n")
-		if len(cf) != 2 {
-			p("cf file must contain 2 lines with email address on one and api key on other. order doesn't matter")
-			os.Exit(1)
+func loadConfig() {
+	confFile = strings.TrimSpace(confFile)
+
+	lines := strings.Split(confFile, "\n")
+	reEq := regexp.MustCompile(`\s*=\s*`)
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "#") || line == "" {
+			continue
 		}
-		for _, line := range cf {
-			if strings.Contains(line, "@") {
-				apiMail = strings.TrimSpace(line)
-			} else {
-				apiKey = strings.TrimSpace(line)
-			}
+		r := strings.NewReplacer("\"", "", "'", "")
+		line = r.Replace(line)
+		line = reEq.ReplaceAllString(line, "=")
+
+		kv := strings.Split(line, "=")
+		k, v := kv[0], kv[1]
+
+		switch k {
+		case "mail":
+			apiMail = v
+		case "apikey":
+			apiKey = v
 		}
 	}
 
@@ -154,7 +163,12 @@ func updateDNS() {
 
 func getArgs() {
 	help := func() {
-		fmt.Println("dnsup <hostname> <ip>\ndnsup home.domain.com 1.2.3.4")
+		fmt.Println("dnsup <hostname> <ip>\n" +
+			"dnsup home.domain.com 1.2.3.4\n\n" +
+			"requires:\n" +
+			"cloudflare api key: as docker secret cf_api or environment variable CF_API\n" +
+			"cloudflare mail: as docker secret cf_mail or environment variable CF_MAIL\n" +
+			"specify docker secrets in docker-compose.yml if not using swarm.")
 		os.Exit(1)
 	}
 	if len(os.Args) != 3 {
@@ -166,7 +180,7 @@ func getArgs() {
 
 func main() {
 	getArgs()
-	getAuth()
+	loadConfig()
 	getDomainId()
 	getHostId()
 	updateDNS()
