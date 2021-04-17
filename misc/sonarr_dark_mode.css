@@ -1,0 +1,441 @@
+/*https://chrome.google.com/webstore/detail/user-javascript-and-css/nbhcbdghjpllgmfilhnhkllmkecfmpld*/
+/*
+  Dark mode for Sonarr v3
+  I use this in the extension above, but it's standard CSS so it can be loaded into any similar extension.
+*/
+:root {
+  --headerBg: #131313;
+  --bg: #1E1E1E;
+  --pane: #252526;
+  --accent: #3C3C3C;
+  --highlight: #37373D;
+  --text: #8c8c8c;
+  --border: #515253;
+}
+
+html, body {
+  color: var(--text);
+}
+body {
+  background-color: var(--bg);
+}
+
+/* header  */
+.PageHeader\/header\/1IhlM {
+  background-color: var(--headerBg);
+  color: var(--text);
+}
+.SeriesSearchInput\/input\/2CZrq {
+  border-bottom-color: var(--text);
+  color: var(--text);
+}
+.SeriesSearchInput\/sectionTitle\/jIgg0, 
+.SeriesSearchInput\/containerOpen\/3F8xe, 
+.SeriesSearchInput\/seriesContainer\/2yDTR,
+.SeriesSearchInput\/sectionTitle\/jIgg0 {
+  color: var(--text);
+}
+.SeriesSearchInput\/containerOpen\/3F8xe .SeriesSearchInput\/seriesContainer\/2yDTR {
+  border-color: var(--border);
+  background-color: var(--bg);
+  box-shadow: unset;
+}
+
+
+
+/* left pane */
+.PageSidebar\/sidebarContainer\/3Hxpq, .PageSidebar\/sidebar\/3IOcI  {
+  background-color: var(--pane);
+  color: var(--text);
+}
+.PageSidebarItem\/isActiveParentLink\/2uxKf  {
+  background-color: var(--highlight);
+  color: var(--text)
+
+}
+
+/* top tool pane */
+.PageToolbar\/toolbar\/1Lo1N {
+  background-color: var(--pane);
+  color: var(--text);
+}
+.PageToolbarButton\/label\/10YbS {
+  color: var(--text);
+}
+.MenuItem\/menuItem\/zB-Up {
+  background-color: var(--accent);
+  color: var(--text);
+}
+.MenuItem\/menuItem\/zB-Up:hover, .MenuItem\/menuItem\/zB-Up:focus {
+  background-color: var(--highlight);
+}
+
+
+/* calendar */
+.Button\/default\/2uiHU {
+  border-color: var(--border);
+  background-color: var(--accent);
+  color: var(--text);
+}
+.CalendarEvent\/seriesTitle\/3sg1o, 
+.CalendarEvent\/episodeInfo\/IWdbW {
+  color: var(--text)
+}
+.CalendarEvent\/event\/3Uyb9 {
+  border-bottom-color: var(--border);
+  /* border-left-color: var(--border); */
+}
+.DayOfWeek\/dayOfWeek\/1iw4D {
+  background-color: var(--accent);
+  color: var(--text);
+}
+.DayOfWeek\/isToday\/SozUU {
+  background-color: var(--highlight);
+}
+.CalendarDay\/day\/2TMXA {
+  border-bottom-color: var(--border);
+  border-left-color: var(--border);
+}
+.CalendarDays\/days\/girjM {
+  border-right-color: var(--border);
+}
+/*series*/
+span.SeriesIndexPoster\/controls\/prEIO.Label\/default\/2AF1C.Label\/small\/3DzJB {
+  background-color: rgba(0,0,0,0.8)!important;
+  color: var(--text)!important;
+}
+
+
+/* From CSS File */
+
+.LoadingIndicator\/ripple\/358v5,
+.SeriesSearchInput\/ripple\/-T6fm 
+{
+  border-color: var(--border);
+}
+.SeriesSearchInput\/input\/2CZrq,
+.SeriesSearchInput\/input\/2CZrq::placeholder,
+.SeriesSearchInput\/sectionTitle\/jIgg0,
+.MenuItem\/menuItem\/zB-Up,
+.MenuItem\/menuItem\/zB-Up:hover,
+.MenuItem\/menuItem\/zB-Up:focus,
+.KeyboardShortcutsModalContent\/key\/26dNy,
+.PageHeader\/header\/1IhlM,
+.Message\/iconContainer\/2ZEq_,
+.Message\/text\/2Llhs,
+.PageSidebarItem\/item\/2zy7a,
+.PageSidebarItem\/link\/TuHn2,
+.PageSidebar\/sidebar\/3IOcI,
+.FormInputHelpText\/helpText\/3_AVV,
+.CheckInput\/input\/283j3,
+.HintedSelectInputSelectedValue\/hintText\/35mE8,
+.HintedSelectInputOption\/hintText\/vhJau,
+.RootFolderSelectInputSelectedValue\/seriesFolder\/a7chC,
+.RootFolderSelectInputSelectedValue\/freeSpace\/1Irwm,
+.FormInputGroup\/inputUnit\/19QXo,
+.PageToolbar\/toolbar\/1Lo1N,
+.ProgressBar\/progressBar\/35LY7,
+.ProgressBar\/frontTextContainer\/3nySl,
+.SeriesIndexRow\/overlayTitle\/3Ghxt,
+.SeriesIndexProgressBar\/progress\/6ceTD,
+.SeriesIndexPoster\/overlayTitle\/2Ugdw,
+.SeriesIndexPoster\/ended\/3RrLo,
+.SeriesIndexPoster\/controls\/prEIO,
+.SeriesIndexOverview\/link\/1i54B,
+.SeriesIndexOverview\/link\/1i54B:hover,
+.SeriesIndexOverview\/ended\/1nBvt,
+.Tooltip\/tooltip\/3HJXy.Tooltip\/inverse\/yMvcm,
+.AddNewSeriesModalContent\/year\/t7IIJ,
+.AddNewSeriesSearchResult\/tvdbLink\/199v0,
+.SeasonPassSeason\/episodes\/N99zs,
+.SelectEpisodeModalContent\/path\/1Okqk,
+.SceneInfo\/comment\/2U6y6,
+.SeriesAlternateTitles\/comment\/373Kq,
+.EpisodeDetailsModalContent\/selectedTab\/42EMp,
+.SeriesDetailsSeason\/sizeOnDisk\/nabiI,
+.SeriesDetails\/headerContent\/-6xIM,
+.SeriesDetails\/seriesNavigationButton\/3E0sL,
+.CalendarEvent\/episodeInfo\/IWdbW,
+.CalendarEvent\/seriesTitle\/3sg1o,
+.CalendarEvent\/airTime\/3Wzho,
+.CalendarEventGroup\/airTime\/1Z6G9,
+.CalendarEventGroup\/episodeInfo\/vfg0M,
+.CalendarDay\/isDifferentMonth\/10CmF,
+.TablePager\/records\/3UHEK,
+.TablePager\/disabledPageButton\/2_1Ze,
+.Settings\/summary\/3KPAv,
+.NamingOption\/example\/RNR6x .NamingOption\/footNote\/2csZH,
+.NamingModal\/footNote\/3vvPl,
+.Card\/card\/1iGZk,
+.QualityProfileItem\/qualityName\/RU9pZ.QualityProfileItem\/notAllowed\/2_wxh,
+.QualityProfileItemGroup\/name\/FfSXr.QualityProfileItemGroup\/notAllowed\/mJ9KR,
+.QualityProfiles\/addQualityProfile\/2U2Io,
+.LanguageProfiles\/addLanguageProfile\/3ic6m,
+.ReleaseProfiles\/addReleaseProfile\/1SsDM,
+.QualityDefinitions\/sizeLimitHelpText\/1wAD4,
+.Indexers\/addIndexer\/2QuUZ,
+.ImportLists\/addList\/13qn4,
+.DownloadClients\/addDownloadClient\/3wo5E,
+.Notifications\/addNotification\/3Z3g5,
+.LogsTableDetailsModal\/detailsText\/3iwn_,
+.Input\/input\/2YWzR,
+.FormLabel\/isAdvanced\/1glHh,
+.SeriesDetails\/info\/A5cSY,
+.SeriesDetails\/info\/A5cSY > div *
+{
+  color: var(--text);
+}
+.Label\/label\/30Bqv
+{
+  color: black!important;
+  /*font-weight: bold;*/
+}
+.Button\/danger\/GbXmk,
+.Button\/danger\/GbXmk:hover,
+.Button\/primary\/1F1YL,
+.Button\/primary\/1F1YL:hover,
+.Button\/success\/36KsU,
+.Button\/success\/36KsU:hover,
+.Button\/warning\/1KG7v,
+.Button\/warning\/1KG7v:hover
+{
+  color: var(--bg);
+  font-weight: bold;
+}
+span.Label\/label\/30Bqv.Label\/inverse\/QUOQ9.Label\/small\/3DzJB {
+  color: var(--text)!important;
+  background-color: unset!important;
+  border: none;
+}
+
+.Button\/default\/2uiHU 
+{
+  border-color: var(--border);
+  background-color: var(--accent);
+  color: var(--text);
+}
+.Button\/default\/2uiHU:hover 
+{
+  border-color: var(--border);
+  background-color: var(--highlight);
+  color: var(--text);
+}
+.Input\/input\/2YWzR,
+.AutoSuggestInput\/suggestionsContainerOpen\/3TAB7 .AutoSuggestInput\/suggestionsContainer\/3MmlD,
+.CheckInput\/input\/283j3,
+.EnhancedSelectInput\/options\/3yy65,
+.EnhancedSelectInput\/optionsModalScroller\/1G0Tq,
+.TableOptionsColumn\/column\/2H7ic,
+.TableOptionsColumnDragSource\/columnPlaceholder\/2IdGU,
+.AddNewSeries\/searchIconContainer\/3QAm8,
+.AddNewSeries\/clearLookupButton\/1dKG7,
+.ImportSeriesSelectSeries\/button\/3CL3L,
+.ImportSeriesSelectSeries\/content\/3oSDj,
+.ImportSeriesSelectSeries\/searchIconContainer\/1wOES,
+.SeasonPassSeason\/season\/2FWuT,
+.EpisodeDetailsModalContent\/selectedTab\/42EMp,
+.SeriesDetailsSeason\/season\/3XIYa,
+.NamingOption\/option\/giCGd,
+.NamingModal\/footNote\/3vvPl code,
+.QualityProfileItem\/qualityProfileItem\/VFp-W,
+.QualityProfileItemGroup\/qualityProfileItemGroup\/2U1l5,
+.QualityProfileItemDragSource\/qualityProfileItemPlaceholder\/2BE7X,
+.QualityProfiles\/center\/1iiKm,
+.LanguageProfileItem\/languageProfileItem\/18XGg,
+.LanguageProfileItemDragSource\/languageProfileItemPlaceholder\/31is6,
+.LanguageProfiles\/center\/7EV_2,
+.ReleaseProfiles\/center\/114Qx,
+.Indexers\/center\/11Csq,
+.DownloadClients\/center\/FvACx,
+.Notifications\/addNotification\/3Z3g5,
+.Notifications\/center\/8iwmy,
+.LogsTableDetailsModal\/detailsText\/3iwn_
+{
+  border-color: var(--border);
+}
+.ModalHeader\/modalHeader\/gpcvG,
+.AppUpdatedModalContent\/changes\/F4CGH,
+.SeriesSearchInput\/input\/2CZrq,
+.KeyValueListInputItem\/itemContainer\/2g1bS,
+.EnhancedSelectInputOption\/isMobile\/3PkRh,
+.EnhancedSelectInput\/mobileCloseButtonContainer\/1gmGp,
+.Tooltip\/bottom\/3Ewbi::after.Tooltip\/default\/2NTKh,
+.Tooltip\/bottom\/3Ewbi.Tooltip\/default\/2NTKh,
+.Popover\/title\/326tA,
+.FieldSet\/legend\/3x6NF,
+.SelectSeriesRow\/series\/1SgeZ,
+.SelectSeasonRow\/season\/HWSg2,
+.OrganizePreviewRow\/row\/JelLl,
+.EpisodeSummary\/filesHeader\/2_Kgn,
+.CalendarEvent\/event\/3Uyb9,
+.CalendarEventGroup\/eventGroup\/gWPtK,
+.CalendarDay\/dayOfMonth\/2CzdW,
+.CalendarDay\/day\/2TMXA,
+.AgendaEvent\/event\/2a83A,
+.Settings\/link\/tvjY0,
+.DelayProfile\/delayProfile\/4BQz_,
+.DelayProfileDragSource\/delayProfilePlaceholder\/3Sb-B,
+.ImportListExclusion\/importListExclusion\/3pxun,
+.RemotePathMapping\/remotePathMapping\/17nFd,
+.TagDetailsModalContent\/restriction\/2i_WK,
+.Updates\/info\/19gvs
+{
+  border-bottom-color: var(--border);
+}
+.ModalFooter\/modalFooter\/1N5Ku,
+.TableRowCell\/cell\/2fbg4,
+.Tooltip\/top\/34wzu.Tooltip\/default\/2NTKh,
+.SeriesDetailsSeason\/episodes\/2_O-g,
+.SeriesDetailsSeason\/collapseButtonContainer\/trs6s,
+.QualityDefinition\/qualityDefinition\/Ouk7S
+{
+  border-top-color: var(--border); 
+}
+.TagInputTag\/editContainer\/1HWd5,
+.Tooltip\/left\/3QgYj::after.Tooltip\/default\/2NTKh,
+.Tooltip\/left\/3QgYj.Tooltip\/default\/2NTKh,
+.CalendarEvent\/event\/3Uyb9,
+.CalendarEventGroup\/eventGroup\/gWPtK,
+.CalendarDay\/day\/2TMXA
+{
+  border-left-color: var(--border);
+}
+.PageToolbarSeparator\/separator\/2Aqbm,
+.Tooltip\/right\/2MxTa::after.Tooltip\/default\/2NTKh,
+.Tooltip\/right\/2MxTa.Tooltip\/default\/2NTKh,
+.CalendarDays\/days\/girjM
+{
+  border-right-color: var(--border);
+}
+.Label\/outline\/1Lb0m,
+.SeriesSearchInput\/input\/2CZrq,
+.MenuItem\/menuItem\/zB-Up,
+.MenuItem\/menuItem\/zB-Up:hover,
+.MenuItem\/menuItem\/zB-Up:focus,
+.KeyboardShortcutsModalContent\/key\/26dNy,
+.EnhancedSelectInput\/options\/3yy65,
+.EnhancedSelectInput\/optionsModalScroller\/1G0Tq,
+.UMaskInput\/readOnly\/2nHqp,
+.TableOptionsColumn\/column\/2H7ic,
+.ProgressBar\/container\/14z4A,
+.SeriesIndexProgressBar\/progress\/6ceTD,
+.SeriesIndexPosterInfo\/info\/2JsCg,
+.SeriesIndexPoster\/nextAiring\/1FZy6,
+.SeriesIndexPoster\/title\/263Pq,
+.SeriesIndexOverviews\/container\/2YzIK:hover .SeriesIndexOverviews\/content\/3NxcP,
+.Tooltip\/tooltip\/3HJXy.Tooltip\/default\/2NTKh,
+.Popover\/title\/326tA,
+.AddNewSeriesSearchResult\/underlay\/11FBP,
+.AddNewSeriesSearchResult\/year\/2jW2b,
+.AddNewSeries\/searchIconContainer\/3QAm8,
+.ImportSeriesTitle\/year\/3Du8X,
+.ImportSeriesSelectSeries\/button\/3CL3L,
+.ImportSeriesSelectSeries\/content\/3oSDj,
+.ImportSeriesSelectSeries\/searchIconContainer\/1wOES,
+.SeasonPassSeason\/season\/2FWuT,
+.SeasonPassSeason\/episodes\/N99zs,
+.SeasonPassSeason\/allEpisodes\/1zGja,
+.SeriesDetailsSeason\/season\/3XIYa,
+.SeriesDetailsSeason\/collapseButtonContainer\/trs6s,
+.DayOfWeek\/dayOfWeek\/1iw4D,
+.NamingOption\/token\/1y5bz,
+.NamingOption\/example\/RNR6x,
+.NamingModal\/footNote\/3vvPl code,
+.Card\/card\/1iGZk,
+.QualityProfileItem\/qualityProfileItem\/VFp-W,
+.QualityProfileItemGroup\/qualityProfileItemGroup\/2U1l5,
+.QualityProfileItemGroup\/qualityProfileItemGroup\/2U1l5.QualityProfileItemGroup\/editGroups\/2KzDp,
+.QualityProfiles\/addQualityProfile\/2U2Io,
+.QualityProfiles\/center\/1iiKm,
+.LanguageProfileItem\/languageProfileItem\/18XGg,
+.LanguageProfiles\/addLanguageProfile\/3ic6m,
+.LanguageProfiles\/center\/7EV_2,
+.ReleaseProfiles\/addReleaseProfile\/1SsDM,
+.ReleaseProfiles\/center\/114Qx,
+.QualityDefinition\/thumb\/2tu5Y,
+.Indexers\/addIndexer\/2QuUZ,
+.Indexers\/center\/11Csq,
+.ImportLists\/addList\/13qn4,
+.DownloadClients\/addDownloadClient\/3wo5E,
+.DownloadClients\/center\/FvACx,
+.Notifications\/addNotification\/3Z3g5,
+.Notifications\/center\/8iwmy
+{
+  background-color: var(--accent);
+}
+.PageSidebarItem\/isActiveParentLink\/2uxKf,
+.TableRow\/row\/33xJE:hover,
+.EnhancedSelectInputOption\/option\/iwTsL:hover,
+.EnhancedSelectInputOption\/isSelected\/1mRo2,
+.EnhancedSelectInputOption\/isSelected\/1mRo2:hover,
+.VirtualTableRow\/row\/2-JS9:hover,
+.FilterBuilderRow\/filterRow\/1ozij:hover,
+.CustomFilter\/customFilter\/zBSMd:hover,
+.AddNewSeriesSearchResult\/underlay\/11FBP:hover,
+.ImportSeriesSearchResult\/series\/2BXMC:hover,
+.EpisodeDetailsModalContent\/selectedTab\/42EMp,
+.DayOfWeek\/isToday\/SozUU,
+.CalendarDay\/isToday\/1rFJO,
+.AgendaEvent\/event\/2a83A:hover,
+.Settings\/link\/tvjY0:hover,
+.NamingOption\/option\/giCGd:hover .NamingOption\/token\/1y5bz,
+.NamingOption\/option\/giCGd:hover .NamingOption\/example\/RNR6x
+{
+  background-color: var(--highlight);
+}
+.PageSidebar\/sidebarContainer\/3Hxpq,
+.PageSidebar\/sidebar\/3IOcI,
+.PageToolbar\/toolbar\/1Lo1N,
+.PageContentFooter\/contentFooter\/3ODMj,
+.QualityDefinition\/track\/34yQ-:nth-child(odd) 
+{
+  background-color: var(--pane);
+}
+.Input\/input\/2YWzR,
+.AutoSuggestInput\/suggestionsContainerOpen\/3TAB7 .AutoSuggestInput\/suggestionsContainer\/3MmlD,
+.AutoSuggestInput\/suggestionHighlighted\/2BWyt,
+.TextInput\/readOnly\/m8eNT,
+.CheckInput\/input\/283j3,
+.ModalContent\/modalContent\/-txrl,
+.Tooltip\/tooltip\/3HJXy.Tooltip\/inverse\/yMvcm,
+.LogsTableDetailsModal\/detailsText\/3iwn_
+{
+  background-color: var(--bg);
+}
+.Input\/input\/2YWzR,
+.Input\/input\/2YWzR:focus,
+.Input\/hasError\/24mF7,
+.Input\/hasWarning\/14V3P,
+.AutoSuggestInput\/suggestionsContainerOpen\/3TAB7 .AutoSuggestInput\/suggestionsContainer\/3MmlD,
+.ProgressBar\/container\/14z4A,
+.ProgressBar\/progressBar\/35LY7,
+.Tooltip\/tooltip\/3HJXy.Tooltip\/default\/2NTKh,
+.Tooltip\/tooltip\/3HJXy.Tooltip\/inverse\/yMvcm,
+.AddNewSeries\/clearLookupButton\/1dKG7,
+.ImportSeriesSelectSeries\/button\/3CL3L,
+.Card\/card\/1iGZk
+{
+  box-shadow: unset;
+}
+
+.Label\/default\/2AF1C 
+{
+  border-color: transparent ;
+  background-color: unset;
+}
+.Settings\/link\/tvjY0,
+.FieldSet\/legend\/3x6NF
+{
+  color: unset;
+}
+.PageSidebar\/sidebar\/3IOcI 
+{
+  position: absolute; inset: 0; overflow: unset; margin-right: 0; margin-bottom: 0;
+}
+.SeriesIndex\/contentBody\/3j3Tx
+{
+  margin-right: -16px;
+}
+.PageJumpBarItem\/jumpBarItem\/3F58I {
+  border-bottom: none;
+}
