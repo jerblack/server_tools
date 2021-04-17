@@ -2,5 +2,11 @@
 !/.gitignore
 connected/wg/*
 connected/connected.conf
+connected/connected
+dnsup/dnsup
 dnsup/dnsup.conf
+extract/extract
+hydra/hydra
 hydra/hydra.conf
+mux/mux
+threader/threader
