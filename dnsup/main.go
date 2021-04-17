@@ -18,11 +18,13 @@ import (
 	dnsup <hostname> <ip>
 	dnsup host.domain.com 1.2.3.4
 
-	cloudflare api key and cloudflare mail will be read from file named cf in same directory as main.go at compilation stage
-		cf file should have cloudflare mail on one line and api key on other line. Order doesn't matter.
-		In practice, cf file will be in secrets docker image and copied into the go image during the build process
-		and embedded into the final binary, which is what will be copied into the final image
-			Dockerfile will look in cf file at root of secrets image
+	cloudflare api key and cloudflare mail will be read from file named dnsup.conf in same directory as main.go at compilation stage
+		example dnsup.conf:
+			mail=
+			apikey=
+		In practice, dnsup.conf file will be in secrets docker image, copied into the go layer during the build process
+		and compiled directly into the final dnsup binary, which is what will be copied into the final image.
+			Dockerfile will look for dnsup.conf file at root of secrets image
 
 
 */
