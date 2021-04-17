@@ -1,0 +1,11 @@
+#!/bin/bash
+WD=$1
+
+echo "$WD"
+cd "$WD" || exit 1
+/usr/bin/extract "$WD"
+/usr/bin/mux -r -p "$WD"
+echo postproc finished
+exit 0
+
+

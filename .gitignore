@@ -1,2 +1,6 @@
 .*
 !/.gitignore
+connected/wg/*
+connected/connected.conf
+dnsup/dnsup.conf
+hydra/hydra.conf
