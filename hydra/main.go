@@ -147,7 +147,7 @@ func (d *Deluge) linkFinished() {
 		if len(v) == 0 && len(allFolders[k]) == 0 {
 			// check for and delete empty folder
 			if k != d.doneFolder+"/" {
-				p("deleting empty folder: %s\n", k)
+				p("deleting empty folder: %s", k)
 				err = os.Remove(k)
 				chkFatal(err)
 			}
@@ -157,7 +157,7 @@ func (d *Deluge) linkFinished() {
 					// delete marker with no marked file
 					markedFile := strings.TrimSuffix(f, seedMarker)
 					if !isStringVal(allFiles[k], markedFile) {
-						p("deleting orphan marker: %s\n", f)
+						p("deleting orphan marker: %s", f)
 						err = os.Remove(f)
 						chkFatal(err)
 					}
@@ -168,7 +168,7 @@ func (d *Deluge) linkFinished() {
 						relPath := strings.TrimPrefix(f, d.doneFolder)
 						preProcPath := filepath.Join(preProcFolder, relPath)
 						preProcRel, _ := filepath.Split(preProcPath)
-						p("linking new seed to pre-proc folder: %s\n", f)
+						p("linking new seed to pre-proc folder: %s", f)
 						err = os.MkdirAll(preProcRel, 0777)
 						chkFatal(err)
 						err = os.Link(f, preProcPath)
@@ -528,6 +528,9 @@ func isDirEmpty(name string) (bool, error) {
 	_, err = f.Readdir(1)
 
 	// if file is EOF the dir is empty.
+	if err == io.EOF {
+		return true, nil
+	}
 	if err == io.EOF {
 		return true, nil
 	}
