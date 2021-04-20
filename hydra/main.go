@@ -22,7 +22,7 @@ var (
 	//go:embed hydra.conf
 	confFile string
 
-	procFolder, preProcFolder, convertFolder, recycleFolder, torFolder string
+	procFolder, preProcFolder, convertFolder, recycleFolder, torFolder, probFolder string
 
 	seedMarker = ".grabbed"
 
@@ -269,6 +269,8 @@ func parseConfig() {
 				recycleFolder = v
 			case "torrent_folder":
 				torFolder = v
+			case "problem_folder":
+				probFolder = v
 			case "default":
 				if reTrue.MatchString(v) {
 					defaultDeluge = deluge
@@ -376,7 +378,12 @@ func (pr *Proc) extractPreProc() {
 func (pr *Proc) muxPreProc() {
 	if ok, e := isDirEmpty(preProcFolder); e == nil && !ok {
 		p("running mux in %s", preProcFolder)
-		err := run("/usr/bin/mux", "-r", "-p", preProcFolder, "-mc", convertFolder)
+		cmd := []string{"/usr/bin/mux", "-r", "-p", preProcFolder, "-mc", convertFolder}
+		if probFolder != "" {
+			cmd = append(cmd, "-prob", probFolder)
+		}
+
+		err := run(cmd...)
 		chk(err)
 	}
 }

@@ -1,0 +1,7 @@
+TODO: MUX: handle -> mkvmerge warning : This text subtitle track contains invalid 8-bit characters outside valid multi-byte UTF-8 sequences
+TODO: MUX: handle -> This audio track contains 2142 bytes of invalid data which were skipped before timestamp 00:42:22.048000000. The audio/video synchronization may have been lost.
+TODO: MUX: handle -> Warning: '***.srt' track 0: Warning in line 2568: The start timestamp is smaller than that of the previous entry. All entries from this file will be sorted by their start time.
+
+TODO: HYDRA: why is hydra docker silently exiting?
+
+TODO: DUPER: index files deterministically

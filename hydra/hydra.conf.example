@@ -24,6 +24,8 @@ recycle_folder = /x/.config/_recycle
 # Torrents and magnets will added directly to the deluge daemon and the file will be moved to the recycle_folder
 torrent_folder = /x/.config/_tor_new
 
+# Any file that generates errors or warnings during mux will be moved here
+problem_folder = /x/_mux_problems
 
 # each section below is a separate deluge daemon
 # daemon options:
