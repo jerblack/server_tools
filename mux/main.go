@@ -50,8 +50,16 @@ import (
 						mux -p ~/_pre_proc -mc ~/_convert
 					mux instance 2
 						mux -w -p ~/_convert -mf ~/_proc
-			-w	watch start path for new files. stay running and mux and convert files as they appear.
+          -rel  -rel with -mc or -mf will preserve the portion of the path after the path specified with -rel
+					file: /a/b/c/d/e/file.mkv -> ~/_convert/d/e/file.mkv
+					run from /
+						mux -p /a/b/ -r -mc ~/_convert -rel /a/b/c/
+					run from /a/b/
+						mux -r -mc ~/_convert -rel /a/b/c/
+			-w	watch start path for new files. stay running and remux and convert files as they appear.
 				recommend using with -mf
+         -prob  -prob <path>
+				move files to this folder if they fail during remux or convert
 */
 
 var (
@@ -62,12 +70,12 @@ var (
 	videoExts  = []string{
 		".avi", ".divx", ".mpg", ".ts", ".wmv", ".mpeg", ".webm", ".xvid",
 		".asf", ".vob", ".mkv", ".flv", ".mp4", ".m4v", ".m2ts", ".mts"}
-	subtitleExts                      = []string{".idx", ".sub", ".srt", ".ass", ".ssa"}
-	allowedVideo                      = []string{"h264", "hevc", "mpeg4"}
-	allowedAudio                      = []string{"aac", "ac3", "eac3", "flac", "alac", "dts", "mp3", "truehd"}
-	keptLangs                         = []string{"eng", "en", "und", "mis", ""}
-	moveConvertPath, moveFinishedPath string
-	moveConvert, moveFinished         bool
+	subtitleExts                                         = []string{".idx", ".sub", ".srt", ".ass", ".ssa"}
+	allowedVideo                                         = []string{"h264", "hevc", "mpeg4"}
+	allowedAudio                                         = []string{"aac", "ac3", "eac3", "flac", "alac", "dts", "mp3", "truehd"}
+	keptLangs                                            = []string{"eng", "en", "und", "mis", ""}
+	moveConvertPath, moveFinishedPath, relPath, probPath string
+	moveConvert, moveFinished, moveRel, moveProb         bool
 )
 
 func getArgs() {
@@ -114,6 +122,28 @@ func getArgs() {
 
 		} else {
 			fmt.Println("must specify path with -mf.")
+			os.Exit(1)
+		}
+	}
+
+	if specifyRel := arrayIdx(args, "-rel"); specifyRel != -1 {
+		moveRel = true
+		if len(args) >= specifyRel+2 {
+			relPath = args[specifyRel+1]
+			relPath, e = filepath.Abs(relPath)
+			chkFatal(e)
+			st, e := os.Stat(relPath)
+			if errors.Is(e, os.ErrNotExist) {
+				fmt.Println("path specified with -rel does not exist.")
+				os.Exit(1)
+			}
+			if !st.IsDir() {
+				fmt.Println("path specified with -rel is not a folder.")
+				os.Exit(1)
+			}
+
+		} else {
+			fmt.Println("must specify path with -rel.")
 			os.Exit(1)
 		}
 	}
@@ -177,14 +207,28 @@ func getArgs() {
 			os.Exit(1)
 		}
 	}
-}
-func viewArgs() {
-	p("argR: %t", argR)
-	p("argP: %t", argP)
-	p("argF: %t", argF)
 
-	p("-p path: %s", startPath)
-	p("-f file: %s", singleFile)
+	if specifyProb := arrayIdx(args, "-prob"); specifyProb != -1 {
+		moveProb = true
+		if len(args) >= specifyProb+2 {
+			probPath = args[specifyProb+1]
+			probPath, e = filepath.Abs(probPath)
+			chkFatal(e)
+			st, e := os.Stat(probPath)
+			if errors.Is(e, os.ErrNotExist) {
+				fmt.Println("path specified with -prob does not exist.")
+				os.Exit(1)
+			}
+			if !st.IsDir() {
+				fmt.Println("path specified with -prob is not a folder.")
+				os.Exit(1)
+			}
+
+		} else {
+			fmt.Println("must specify path with -prob.")
+			os.Exit(1)
+		}
+	}
 }
 
 func isVideo(path string) bool {
@@ -214,13 +258,13 @@ func (m *Muxer) start() {
 	m.jobs = []*Job{}
 	m.getJobs()
 	m.doJobs()
-	if moveFinished {
-		emp, _ := isDirEmpty(startPath)
-		if !emp {
-			p("finished, moving files from '%s' to '%s'", startPath, moveFinishedPath)
-			mvTree(startPath, moveFinishedPath, true)
-		}
-	}
+	//if moveFinished {
+	//	emp, _ := isDirEmpty(startPath)
+	//	if !emp {
+	//		p("finished, moving files from '%s' to '%s'", startPath, moveFinishedPath)
+	//		mvTree(startPath, moveFinishedPath, true)
+	//	}
+	//}
 }
 func (m *Muxer) getJobs() {
 	makeJob := func(vid string) {
@@ -278,7 +322,12 @@ func (m *Muxer) doJobs() {
 		if e := job.getStreams(); e != nil {
 			p("failed to get streams for file: %s", job.video)
 			p("got error: %s", e)
-			p("FILE LIKELY CORRUPT, SKIPPING")
+			if moveProb {
+				p("FILE LIKELY CORRUPT, MOVING TO %s", probPath)
+				job.move(probPath)
+			} else {
+				p("FILE LIKELY CORRUPT, SKIPPING")
+			}
 			continue
 		}
 		job.parseStreams()
@@ -323,7 +372,7 @@ func (j *Job) getStreams() error {
 }
 func (j *Job) parseStreams() {
 	for n, s := range j.Streams {
-		if s.CodecType == "video" && !isAny(s.CodecName, "mjpeg", "bmp") {
+		if s.CodecType == "video" && !isAny(s.CodecName, "mjpeg", "bmp", "png") {
 			if !hasString(allowedVideo, s.CodecName) {
 				p("convert reason, video stream is '%s' ", s.CodecName)
 				s.convert = true
@@ -362,7 +411,6 @@ func (j *Job) parseStreams() {
 				} else {
 					j.subEng = append(j.subEng, s)
 				}
-
 			}
 		}
 	}
@@ -536,6 +584,7 @@ func (j *Job) printStreams() {
 		fmt.Println(s)
 	}
 }
+
 func (j *Job) runJob() {
 	if len(j.cmdLine) == 0 {
 		return
@@ -552,6 +601,18 @@ func (j *Job) runJob() {
 			err = os.Rename(j.tmpVideo, j.finalVideo)
 			chk(err)
 			if err == nil {
+				if moveFinished {
+					var dst string
+					if moveRel {
+						dst = strings.Replace(j.finalVideo, relPath, moveFinishedPath, 1)
+					} else {
+						dst = strings.Replace(j.finalVideo, startPath, moveFinishedPath, 1)
+					}
+					err = mvFile(j.finalVideo, dst)
+					chk(err)
+					rmEmptyExcept(filepath.Dir(j.finalVideo), startPath)
+				}
+
 				for _, s := range j.subtitles {
 					p("removing subtitle file '%s'", s)
 					err = os.Remove(s)
@@ -567,11 +628,15 @@ func (j *Job) runJob() {
 		}
 	} else {
 		p("remux failed for '%s'", j.video)
-		_, err := os.Stat(j.tmpVideo)
+		_, err = os.Stat(j.tmpVideo)
 		if !errors.Is(err, os.ErrNotExist) {
 			p("removing temp file %s", j.tmpVideo)
 			err = os.Remove(j.tmpVideo)
 			chk(err)
+		}
+		if moveProb {
+			p("moving %s -> %s", j.video, probPath)
+			j.move(probPath)
 		}
 	}
 	for _, s := range j.elementaryStreams {
@@ -586,23 +651,101 @@ func (j *Job) move(path string) {
 	files := append(j.subtitles, j.video)
 	files = append(files, j.dotSubs...)
 	for _, f := range files {
-		newPath := strings.Replace(f, startPath, path, 1)
-		newDir := filepath.Dir(newPath)
-		e := os.MkdirAll(newDir, 0777)
-		chkFatal(e)
-		e = os.Rename(f, newPath)
-		chkFatal(e)
-		d, e := filepath.Abs(filepath.Dir(f))
-		emp, e := isDirEmpty(d)
-		chk(e)
-		if emp && d != startPath {
-			e = os.Remove(filepath.Dir(f))
-			chkFatal(e)
+		var newPath string
+		if moveRel {
+			newPath = strings.Replace(f, relPath, path, 1)
+		} else {
+			newPath = strings.Replace(f, startPath, path, 1)
 		}
+
+		e := mvFile(f, newPath)
+		chkFatal(e)
+		rmEmptyExcept(filepath.Dir(newPath), startPath)
+	}
+}
+
+func cleanIdx(f string) bool {
+	idxB, e := os.ReadFile(f)
+	if e != nil {
+		chk(e)
+		return false
+	}
+	var outIdx []string
+	idxIn := string(idxB)
+	idxLines := strings.Split(idxIn, "\n")
+	found := false
+	for _, line := range idxLines {
+		if strings.HasPrefix(line, "id: --") {
+			line = strings.Replace(line, "id: --", "id: en", 1)
+			found = true
+		}
+		outIdx = append(outIdx, line)
+	}
+	if !found {
+		return true
+	}
+	newIdx := strings.Join(outIdx, "\n") + "\n"
+	e = os.WriteFile(f, []byte(newIdx), 0666)
+	if e != nil {
+		chk(e)
+		return false
+	}
+	return true
+}
+
+type Stream struct {
+	Index                 int `json:"index"`
+	newIndex              int
+	convert, foreignAudio bool
+	elementaryStream      string
+	CodecName             string         `json:"codec_name"`
+	CodecType             string         `json:"codec_type"`
+	FieldOrder            string         `json:"field_order"`
+	Disposition           DispositionMap `json:"disposition"`
+	Tags                  TagsMap        `json:"tags"`
+}
+type DispositionMap struct {
+	Default int `json:"default"`
+	Forced  int `json:"forced"`
+}
+type TagsMap struct {
+	Language string `json:"language"`
+}
+
+func main() {
+	getArgs()
+	//viewArgs()
+	var m Muxer
+	if argW {
+		p("starting watcher. scanning for new files every 60 seconds")
+		for {
+			m.start()
+			time.Sleep(60 * time.Second)
+		}
+	} else {
+		m.start()
+	}
+}
+
+func rmEmptyExcept(dir, except string) {
+	dir, e := filepath.Abs(dir)
+	chkFatal(e)
+	except, e = filepath.Abs(except)
+	chkFatal(e)
+	empty, e := isDirEmpty(dir)
+	chkFatal(e)
+
+	if (dir != except || except == "") && empty {
+		e = os.Remove(dir)
+		chkFatal(e)
 	}
 
 }
-
+func mvFile(src, dst string) error {
+	e := os.MkdirAll(filepath.Dir(dst), 0777)
+	chkFatal(e)
+	return os.Rename(src, dst)
+}
 func mvTree(src, dst string, removeEmpties bool) {
 	p("moving tree %s to %s", src, dst)
 	var files []string
@@ -669,68 +812,6 @@ func isDirEmpty(name string) (bool, error) {
 		return true, nil
 	}
 	return false, err
-}
-func cleanIdx(f string) bool {
-	idxB, e := os.ReadFile(f)
-	if e != nil {
-		chk(e)
-		return false
-	}
-	var outIdx []string
-	idxIn := string(idxB)
-	idxLines := strings.Split(idxIn, "\n")
-	found := false
-	for _, line := range idxLines {
-		if strings.HasPrefix(line, "id: --") {
-			line = strings.Replace(line, "id: --", "id: en", 1)
-			found = true
-		}
-		outIdx = append(outIdx, line)
-	}
-	if !found {
-		return true
-	}
-	newIdx := strings.Join(outIdx, "\n") + "\n"
-	e = os.WriteFile(f, []byte(newIdx), 0666)
-	if e != nil {
-		chk(e)
-		return false
-	}
-	return true
-}
-
-type Stream struct {
-	Index                 int `json:"index"`
-	newIndex              int
-	convert, foreignAudio bool
-	elementaryStream      string
-	CodecName             string         `json:"codec_name"`
-	CodecType             string         `json:"codec_type"`
-	FieldOrder            string         `json:"field_order"`
-	Disposition           DispositionMap `json:"disposition"`
-	Tags                  TagsMap        `json:"tags"`
-}
-type DispositionMap struct {
-	Default int `json:"default"`
-	Forced  int `json:"forced"`
-}
-type TagsMap struct {
-	Language string `json:"language"`
-}
-
-func main() {
-	getArgs()
-	//viewArgs()
-	var m Muxer
-	if argW {
-		p("starting watcher. scanning for new files every 60 seconds")
-		for {
-			m.start()
-			time.Sleep(60 * time.Second)
-		}
-	} else {
-		m.start()
-	}
 }
 
 func isAny(a string, b ...string) bool {
