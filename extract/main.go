@@ -54,7 +54,7 @@ var (
 	zips      map[string][]string
 	encs      map[string][]string
 	junkExts  = []string{".sfv", ".nfo", ".srr", ".url", ".diz", ".nzb", ".par2",
-		".ds_store", "thumbs.db", ".png", ".jpg", ".jpeg"}
+		".ds_store", "thumbs.db", ".png", ".jpg", ".jpeg", ".txt", ".gif"}
 	junkSubs    = []string{"sample", "screens", "proof"}
 	junkFiles   map[string][]string
 	junkFolders map[string][]string

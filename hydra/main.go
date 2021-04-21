@@ -19,8 +19,10 @@ import (
 )
 
 var (
-	//go:embed hydra.conf
-	confFile string
+	possibleConfs = []string{
+		"/run/secrets/hydra.conf",
+		"/etc/hydra.conf",
+	}
 
 	procFolder, preProcFolder, convertFolder, recycleFolder, torFolder, probFolder string
 
@@ -226,6 +228,19 @@ func (d *Deluge) addTorrent(torrentPath string) {
 }
 
 func parseConfig() {
+	var confFile string
+	for _, conf := range possibleConfs {
+		b, e := os.ReadFile(conf)
+		if e == nil {
+			confFile = string(b)
+			break
+		}
+	}
+	if confFile == "" {
+		p("no connected.conf file found in locations: %v", possibleConfs)
+		os.Exit(1)
+	}
+
 	delugeDaemons = make(map[string]*Deluge)
 	_d := Deluge{}
 	deluge := &_d
@@ -392,8 +407,13 @@ func (pr *Proc) muxConvert() {
 		time.Sleep(time.Duration(convertInterval) * time.Second)
 		if ok, e := isDirEmpty(convertFolder); e == nil && !ok {
 			p("running mux in %s", convertFolder)
-			err := run("/usr/bin/mux", "-r", "-p", convertFolder, "-mf", procFolder)
+			cmd := []string{"/usr/bin/mux", "-r", "-p", convertFolder, "-mf", procFolder}
+			if probFolder != "" {
+				cmd = append(cmd, "-prob", probFolder)
+			}
+			err := run(cmd...)
 			chk(err)
+			rmEmptyFolders(convertFolder)
 		}
 	}
 
@@ -475,20 +495,7 @@ func mvTree(src, dst string, removeEmpties bool) {
 		}
 	}
 	if removeEmpties {
-		fn := func(i, j int) bool {
-			// reverse sort
-			return len(folders[j]) < len(folders[i])
-		}
-		sort.Slice(folders, fn)
-		for _, f := range folders {
-			if filepath.Clean(f) == filepath.Clean(src) {
-				continue
-			}
-			if empty, err := isDirEmpty(f); err == nil && empty {
-				e := os.Remove(f)
-				chk(e)
-			}
-		}
+		rmEmptyFolders(src)
 	}
 }
 func isUpgrade(new, old string) bool {
@@ -524,6 +531,37 @@ func isUpgrade(new, old string) bool {
 	}
 	return false
 }
+func rmEmptyFolders(root string) {
+	var folders []string
+	root, _ = filepath.Abs(root)
+	walk := func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			path, _ = filepath.Abs(path)
+			if root != path {
+				folders = append(folders, path)
+			}
+		}
+		return nil
+	}
+	err := filepath.Walk(root, walk)
+	chkFatal(err)
+
+	fn := func(i, j int) bool {
+		// reverse sort
+		return len(folders[j]) < len(folders[i])
+	}
+	sort.Slice(folders, fn)
+	for _, f := range folders {
+		if empty, _ := isDirEmpty(f); empty {
+			err = os.Remove(f)
+			chk(err)
+		}
+	}
+}
+
 func isDirEmpty(name string) (bool, error) {
 	f, err := os.Open(name)
 	if err != nil {

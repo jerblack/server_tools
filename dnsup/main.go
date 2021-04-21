@@ -18,20 +18,21 @@ import (
 	dnsup <hostname> <ip>
 	dnsup host.domain.com 1.2.3.4
 
-	cloudflare api key and cloudflare mail will be read from file named dnsup.conf in same directory as main.go at compilation stage
+	cloudflare api key and cloudflare mail will be read from file named dnsup.conf in either /run/secrets/ or /etc/
 		example dnsup.conf:
 			mail=
 			apikey=
-		In practice, dnsup.conf file will be in secrets docker image, copied into the go layer during the build process
-		and compiled directly into the final dnsup binary, which is what will be copied into the final image.
-			Dockerfile will look for dnsup.conf file at root of secrets image
+		In practice, dnsup.conf file will be injected using secrets defined in the docker-compose,
+		Dockerfile will look for conf file in .secrets/dnsup.conf
 
 
 */
 
 var (
-	//go:embed dnsup.conf
-	confFile string
+	possibleConfs = []string{
+		"/run/secrets/dnsup.conf",
+		"/etc/dnsup.conf",
+	}
 
 	apiKey, apiMail  string
 	hostname, ip     string
@@ -41,6 +42,20 @@ var (
 )
 
 func loadConfig() {
+	var confFile string
+
+	for _, conf := range possibleConfs {
+		b, e := os.ReadFile(conf)
+		if e == nil {
+			confFile = string(b)
+			break
+		}
+	}
+	if confFile == "" {
+		p("no dnsup.conf file found in locations: %v", possibleConfs)
+		os.Exit(1)
+	}
+
 	confFile = strings.TrimSpace(confFile)
 
 	lines := strings.Split(confFile, "\n")

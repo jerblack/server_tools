@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"embed"
 	"errors"
 	"fmt"
 	"io"
@@ -40,11 +39,16 @@ import (
 */
 
 var (
-	//go:embed wg
-	wg embed.FS
-	//go:embed connected.conf
-	connectedConf string
-	wgFolder      = "/etc/wireguard"
+	possibleConfs = []string{
+		"/run/secrets/connected.conf",
+		"/etc/connected.conf",
+	}
+	possibleWgs = []string{
+		"/run/secrets/wg.tar.gz",
+		"./wg.tar.gz",
+	}
+
+	wgFolder = "/etc/wireguard"
 
 	confs                                                                           []WgConf
 	ip, mask, gateway, localDns, remoteDns, remoteIp, localHostname, publicHostname string
@@ -56,6 +60,20 @@ var (
 )
 
 func loadConfig() {
+	var connectedConf string
+
+	for _, conf := range possibleConfs {
+		b, e := os.ReadFile(conf)
+		if e == nil {
+			connectedConf = string(b)
+			break
+		}
+	}
+	if connectedConf == "" {
+		p("no connected.conf file found in locations: %v", possibleConfs)
+		os.Exit(1)
+	}
+
 	splitTunnelHosts = make(map[string][]string)
 	lines := strings.Split(connectedConf, "\n")
 	for _, line := range lines {
@@ -100,6 +118,14 @@ func loadConfig() {
 		splitTunnelHosts[k] = dnsLookup(k)
 	}
 }
+func extractWgTar() {
+	for _, wg := range possibleWgs {
+		_, e := os.Stat(wg)
+		if e == nil {
+			run("tar", "-xvf", wg, "-C", "/")
+		}
+	}
+}
 
 func isIp(host string) bool {
 	re := regexp.MustCompile(`(\d{1,3}\.){3}\d{1,3}`)
@@ -137,8 +163,8 @@ type WgConf struct {
 	endpoint string
 }
 
-func writeConfs() {
-	wgFiles, e := wg.ReadDir("wg")
+func readWgConfs() {
+	wgFiles, e := os.ReadDir(wgFolder)
 	chkFatal(e)
 	e = os.MkdirAll(wgFolder, 0770)
 	chkFatal(e)
@@ -151,14 +177,7 @@ func writeConfs() {
 
 		if !conf.IsDir() && strings.HasSuffix(strings.ToLower(conf.Name()), ".conf") {
 			outPath := filepath.Join(wgFolder, conf.Name())
-			f, e := wg.ReadFile(filepath.Join("wg", conf.Name()))
-			chkFatal(e)
-			_, e = os.Stat(outPath)
-			if e == nil {
-				e = os.Remove(outPath)
-				chkFatal(e)
-			}
-			e = os.WriteFile(outPath, f, 0440)
+			f, e := os.ReadFile(outPath)
 			chkFatal(e)
 
 			var c WgConf
@@ -267,10 +286,11 @@ func fixIp() {
 }
 func main() {
 	loadConfig()
+	extractWgTar()
 	p("connection monitor has awakened")
 
 	p("writing wireguard conf files")
-	writeConfs()
+	readWgConfs()
 	getHostname()
 
 	p("setting ip information")
