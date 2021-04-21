@@ -411,7 +411,7 @@ func (pr *Proc) muxPreProc() {
 func (pr *Proc) muxConvert() {
 	for {
 		time.Sleep(time.Duration(convertInterval) * time.Second)
-		if isDirEmpty(convertFolder) {
+		if !isDirEmpty(convertFolder) {
 			p("running mux in %s", convertFolder)
 			cmd := []string{"/usr/bin/mux", "-r", "-p", convertFolder, "-mf", procFolder}
 			if probFolder != "" {
