@@ -190,11 +190,7 @@ func updateDNS() {
 func getArgs() {
 	help := func() {
 		fmt.Println("dnsup <hostname> <ip>\n" +
-			"dnsup home.domain.com 1.2.3.4\n\n" +
-			"requires:\n" +
-			"cloudflare api key: as docker secret cf_api or environment variable CF_API\n" +
-			"cloudflare mail: as docker secret cf_mail or environment variable CF_MAIL\n" +
-			"specify docker secrets in docker-compose.yml if not using swarm.")
+			"dnsup home.domain.com 1.2.3.4")
 		os.Exit(1)
 	}
 	if len(os.Args) != 3 {
