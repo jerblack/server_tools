@@ -1,17 +1,13 @@
 package main
 
 import (
-	"bytes"
-	"errors"
-	"fmt"
-	"io"
+	"github.com/jerblack/server_tools/base"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 )
 
 /*
@@ -109,9 +105,9 @@ func getFiles() {
 					junkFiles[d] = append(junkFiles[d], path)
 				}
 			} else {
-				base := filepath.Base(s)
+				last := filepath.Base(s)
 				for _, folder := range junkSubs {
-					if base == folder {
+					if last == folder {
 						count++
 						p("found %s folder: %s", folder, path)
 						junkFolders[d] = append(junkFolders[d], path)
@@ -227,22 +223,6 @@ func isSample(path string) bool {
 	}
 	return false
 }
-func isDirEmpty(name string) bool {
-	f, err := os.Open(name)
-	if err != nil {
-		return false
-	}
-	defer f.Close()
-
-	// read in ONLY one file
-	_, err = f.Readdir(1)
-
-	// if file is EOF the dir is empty.
-	if err == io.EOF {
-		return true
-	}
-	return false
-}
 
 func extract() {
 
@@ -254,7 +234,7 @@ func extract() {
 		delete all junk files and folders
 		call getFiles again, will loop until no more qualifying files
 	*/
-	for path, _ := range rars {
+	for path := range rars {
 		frs := firstRar(path)
 		if frs != nil {
 			for _, r := range frs {
@@ -263,7 +243,7 @@ func extract() {
 			}
 		}
 	}
-	for path, _ := range zips {
+	for path := range zips {
 		fzs := firstZip(path)
 		if fzs != nil {
 			for _, z := range fzs {
@@ -405,72 +385,6 @@ func main() {
 	extract()
 }
 
-func p(s string, i ...interface{}) {
-	now := time.Now()
-	t := strings.ToLower(strings.TrimRight(now.Format("3.04PM"), "M"))
-	notice := fmt.Sprintf("%s | %s", t, fmt.Sprintf(s, i...))
-	fmt.Println(notice)
-}
-func chkFatal(err error) {
-	if err != nil {
-		fmt.Println("----------------------")
-		panic(err)
-	}
-}
-func chk(err error) {
-	if err != nil {
-		fmt.Println("----------------------")
-		fmt.Println(err)
-		fmt.Println("----------------------")
-	}
-}
-func getAltPath(path string) string {
-	i := 1
-	newPath := path
-	for {
-		_, e := os.Stat(newPath)
-		if errors.Is(e, os.ErrNotExist) {
-			return newPath
-		}
-		newPath = fmt.Sprintf("%s.%d", path, i)
-		i += 1
-	}
-
-}
-func arrayIdx(slice []string, val string) int {
-	for n, item := range slice {
-		if item == val {
-			return n
-		}
-	}
-	return -1
-}
-func hasString(slice []string, val string) bool {
-	return arrayIdx(slice, val) != -1
-}
-func run(args ...string) error {
-	cmd := exec.Command(args[0], args[1:]...)
-
-	var stdBuffer bytes.Buffer
-	mw := io.MultiWriter(os.Stdout, &stdBuffer)
-
-	cmd.Stdout = mw
-	cmd.Stderr = mw
-
-	return cmd.Run()
-
-}
-func printCmd(cmd []string) {
-	var parts []string
-	for _, c := range cmd {
-		if strings.Contains(c, " ") {
-			c = fmt.Sprintf("\"%s\"", c)
-		}
-		parts = append(parts, c)
-	}
-	p(strings.Join(parts, " "))
-}
-
 /**
  * Parses url with the given regular expression and returns the
  * group values defined in the expression.
@@ -489,3 +403,11 @@ func getParams(regEx, s string) (paramsMap map[string]string) {
 	}
 	return paramsMap
 }
+
+var (
+	p          = base.P
+	chk        = base.Chk
+	chkFatal   = base.ChkFatal
+	isDirEmpty = base.IsDirEmpty
+	run        = base.Run
+)

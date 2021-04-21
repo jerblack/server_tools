@@ -1,15 +1,13 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
+	"github.com/jerblack/server_tools/base"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 )
@@ -148,10 +146,10 @@ func getArgs() {
 		}
 	}
 
-	if hasString(args, "-r") {
+	if isAny("-r", args...) {
 		argR = true
 	}
-	if hasString(args, "-w") {
+	if isAny("-w", args...) {
 		argW = true
 	}
 	if specifyP := arrayIdx(args, "-p"); specifyP != -1 {
@@ -290,7 +288,7 @@ func (m *Muxer) getJobs() {
 			chkFatal(e)
 
 			files, e := sp.ReadDir(-1)
-			sp.Close()
+			_ = sp.Close()
 			chkFatal(e)
 			for _, f := range files {
 				if !f.IsDir() && isVideo(f.Name()) {
@@ -373,7 +371,7 @@ func (j *Job) getStreams() error {
 func (j *Job) parseStreams() {
 	for n, s := range j.Streams {
 		if s.CodecType == "video" && !isAny(s.CodecName, "mjpeg", "bmp", "png") {
-			if !hasString(allowedVideo, s.CodecName) {
+			if !isAny(s.CodecName, allowedVideo...) {
 				p("convert reason, video stream is '%s' ", s.CodecName)
 				s.convert = true
 				j.convert = true
@@ -383,14 +381,14 @@ func (j *Job) parseStreams() {
 			j.vidStream = append(j.vidStream, s)
 		}
 		if s.CodecType == "audio" {
-			if !hasString(allowedAudio, s.CodecName) {
+			if !isAny(s.CodecName, allowedAudio...) {
 				p("convert reason, audio stream is '%s' ", s.CodecName)
 				s.convert = true
 				j.convert = true
 				s.elementaryStream = fmt.Sprintf("%s.%d.ac3", j.baseWithPath, n)
 				j.mux = true
 			}
-			if hasString(keptLangs, s.Tags.Language) {
+			if isAny(s.Tags.Language, keptLangs...) {
 				j.audioEng = append(j.audioEng, s)
 			} else {
 				s.foreignAudio = true
@@ -398,7 +396,7 @@ func (j *Job) parseStreams() {
 			}
 		}
 		if s.CodecType == "subtitle" {
-			if hasString(keptLangs, s.Tags.Language) {
+			if isAny(s.Tags.Language, keptLangs...) {
 				if s.CodecName == "mov_text" {
 					p("convert reason, subtitle stream is '%s' ", s.CodecName)
 					s.convert = true
@@ -610,7 +608,6 @@ func (j *Job) runJob() {
 					}
 					err = mvFile(j.finalVideo, dst)
 					chk(err)
-					rmEmptyExcept(filepath.Dir(j.finalVideo), startPath)
 				}
 
 				for _, s := range j.subtitles {
@@ -644,6 +641,7 @@ func (j *Job) runJob() {
 		e := os.Remove(s)
 		chk(e)
 	}
+	rmEmptyFolders(startPath)
 
 }
 
@@ -660,8 +658,8 @@ func (j *Job) move(path string) {
 
 		e := mvFile(f, newPath)
 		chkFatal(e)
-		rmEmptyExcept(filepath.Dir(newPath), startPath)
 	}
+	rmEmptyFolders(startPath)
 }
 
 func cleanIdx(f string) bool {
@@ -727,163 +725,14 @@ func main() {
 	}
 }
 
-func rmEmptyExcept(dir, except string) {
-	dir, e := filepath.Abs(dir)
-	chkFatal(e)
-	except, e = filepath.Abs(except)
-	chkFatal(e)
-	empty, e := isDirEmpty(dir)
-	chkFatal(e)
-
-	if (dir != except || except == "") && empty {
-		e = os.Remove(dir)
-		chkFatal(e)
-	}
-
-}
-func mvFile(src, dst string) error {
-	e := os.MkdirAll(filepath.Dir(dst), 0777)
-	chkFatal(e)
-	return os.Rename(src, dst)
-}
-func mvTree(src, dst string, removeEmpties bool) {
-	p("moving tree %s to %s", src, dst)
-	var files []string
-	var folders []string
-	walk := func(p string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if strings.Contains(p, "_UNPACK_") || strings.Contains(p, "_FAILED_") {
-			return nil
-		}
-		if info.IsDir() {
-			folders = append(folders, p)
-		} else {
-			files = append(files, p)
-		}
-		return nil
-	}
-	err := filepath.Walk(src, walk)
-	chkFatal(err)
-
-	for _, f := range folders {
-		newFolder := strings.Replace(f, src, dst, 1)
-		err := os.MkdirAll(newFolder, 0777)
-		chkFatal(err)
-	}
-	for _, f := range files {
-		dstFile := strings.Replace(f, src, dst, 1)
-		dstFile = getAltPath(dstFile)
-		p("moving file to %s", dstFile)
-		renErr := os.Rename(f, dstFile)
-		chkFatal(renErr)
-
-	}
-	if removeEmpties {
-		fn := func(i, j int) bool {
-			// reverse sort
-			return len(folders[j]) < len(folders[i])
-		}
-		sort.Slice(folders, fn)
-		for _, f := range folders {
-			if filepath.Clean(f) == filepath.Clean(src) {
-				continue
-			}
-			if empty, err := isDirEmpty(f); err == nil && empty {
-				e := os.Remove(f)
-				chk(e)
-			}
-		}
-	}
-}
-func isDirEmpty(name string) (bool, error) {
-	f, err := os.Open(name)
-	if err != nil {
-		return false, err
-	}
-	defer f.Close()
-
-	// read in ONLY one file
-	_, err = f.Readdir(1)
-
-	// if file is EOF the dir is empty.
-	if err == io.EOF {
-		return true, nil
-	}
-	return false, err
-}
-
-func isAny(a string, b ...string) bool {
-	for _, _b := range b {
-		if a == _b {
-			return true
-		}
-	}
-	return false
-}
-func p(s string, i ...interface{}) {
-	now := time.Now()
-	t := strings.ToLower(strings.TrimRight(now.Format("3.04PM"), "M"))
-	notice := fmt.Sprintf("%s | %s", t, fmt.Sprintf(s, i...))
-	fmt.Println(notice)
-}
-func chkFatal(err error) {
-	if err != nil {
-		fmt.Println("----------------------")
-		panic(err)
-	}
-}
-func chk(err error) {
-	if err != nil {
-		fmt.Println("----------------------")
-		fmt.Println(err)
-		fmt.Println("----------------------")
-	}
-}
-func getAltPath(path string) string {
-	i := 1
-	newPath := path
-	for {
-		_, e := os.Stat(newPath)
-		if errors.Is(e, os.ErrNotExist) {
-			return newPath
-		}
-		newPath = fmt.Sprintf("%s.%d", path, i)
-		i += 1
-	}
-
-}
-func arrayIdx(slice []string, val string) int {
-	for n, item := range slice {
-		if item == val {
-			return n
-		}
-	}
-	return -1
-}
-func hasString(slice []string, val string) bool {
-	return arrayIdx(slice, val) != -1
-}
-func run(args ...string) error {
-	cmd := exec.Command(args[0], args[1:]...)
-
-	var stdBuffer bytes.Buffer
-	mw := io.MultiWriter(os.Stdout, &stdBuffer)
-
-	cmd.Stdout = mw
-	cmd.Stderr = mw
-
-	return cmd.Run()
-
-}
-func printCmd(cmd []string) {
-	var parts []string
-	for _, c := range cmd {
-		if strings.Contains(c, " ") {
-			c = fmt.Sprintf("\"%s\"", c)
-		}
-		parts = append(parts, c)
-	}
-	p(strings.Join(parts, " "))
-}
+var (
+	p              = base.P
+	chk            = base.Chk
+	chkFatal       = base.ChkFatal
+	isAny          = base.IsAny
+	arrayIdx       = base.ArrayIdx
+	run            = base.Run
+	rmEmptyFolders = base.RmEmptyFolders
+	printCmd       = base.PrintCmd
+	mvFile         = base.MvFile
+)

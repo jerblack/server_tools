@@ -1,10 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"errors"
 	"fmt"
+	"github.com/jerblack/server_tools/base"
 	"io"
 	"math/rand"
 	"net"
@@ -114,7 +113,7 @@ func loadConfig() {
 			heartbeatIp = v
 		}
 	}
-	for k, _ := range splitTunnelHosts {
+	for k := range splitTunnelHosts {
 		splitTunnelHosts[k] = dnsLookup(k)
 	}
 }
@@ -122,7 +121,7 @@ func extractWgTar() {
 	for _, wg := range possibleWgs {
 		_, e := os.Stat(wg)
 		if e == nil {
-			run("tar", "-xvf", wg, "-C", "/")
+			_ = run("tar", "-xvf", wg, "-C", "/")
 		}
 	}
 }
@@ -223,7 +222,10 @@ func updateDNS() {
 	if publicHostname != "" {
 		rsp, e := http.Get("https://ipv4.am.i.mullvad.net")
 		chk(e)
-		defer rsp.Body.Close()
+		defer func() {
+			e = rsp.Body.Close()
+			chk(e)
+		}()
 		if e != nil {
 			return
 		}
@@ -310,77 +312,9 @@ func main() {
 	}
 }
 
-func isAny(a string, b ...string) bool {
-	for _, _b := range b {
-		if a == _b {
-			return true
-		}
-	}
-	return false
-}
-func p(s string, i ...interface{}) {
-	now := time.Now()
-	t := strings.ToLower(strings.TrimRight(now.Format("3.04PM"), "M"))
-	notice := fmt.Sprintf("%s | %s", t, fmt.Sprintf(s, i...))
-	fmt.Println(notice)
-}
-func chkFatal(err error) {
-	if err != nil {
-		fmt.Println("----------------------")
-		panic(err)
-	}
-}
-func chk(err error) {
-	if err != nil {
-		fmt.Println("----------------------")
-		fmt.Println(err)
-		fmt.Println("----------------------")
-	}
-}
-func getAltPath(path string) string {
-	i := 1
-	newPath := path
-	for {
-		_, e := os.Stat(newPath)
-		if errors.Is(e, os.ErrNotExist) {
-			return newPath
-		}
-		newPath = fmt.Sprintf("%s.%d", path, i)
-		i += 1
-	}
-
-}
-func arrayIdx(slice []string, val string) int {
-	for n, item := range slice {
-		if item == val {
-			return n
-		}
-	}
-	return -1
-}
-func hasString(slice []string, val string) bool {
-	return arrayIdx(slice, val) != -1
-}
-func run(args ...string) error {
-	printCmd(args)
-	cmd := exec.Command(args[0], args[1:]...)
-
-	var stdBuffer bytes.Buffer
-	mw := io.MultiWriter(os.Stdout, &stdBuffer)
-
-	cmd.Stdout = mw
-	cmd.Stderr = mw
-
-	return cmd.Run()
-
-}
-func printCmd(cmd []string) {
-	var parts []string
-	for _, c := range cmd {
-		if strings.Contains(c, " ") {
-			c = fmt.Sprintf("\"%s\"", c)
-		}
-		parts = append(parts, c)
-	}
-	p(strings.Join(parts, " "))
-}
+var (
+	p        = base.P
+	chk      = base.Chk
+	chkFatal = base.ChkFatal
+	run      = base.Run
+)

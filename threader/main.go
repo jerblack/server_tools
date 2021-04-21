@@ -3,13 +3,13 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"github.com/jerblack/server_tools/base"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 )
 
 var (
@@ -60,10 +60,10 @@ func getJobs() {
 		p("-r set without including /./ in source path")
 		os.Exit(1)
 	}
-	var base string
+	var root string
 	if relative {
-		base = strings.Split(srcPath, "/./")[0]
-		base, _ = filepath.Abs(base)
+		root = strings.Split(srcPath, "/./")[0]
+		root, _ = filepath.Abs(root)
 	}
 
 	st, e := os.Stat(srcPath)
@@ -76,7 +76,7 @@ func getJobs() {
 			if !info.IsDir() {
 				if relative {
 					abs, _ := filepath.Abs(p)
-					dst := strings.Replace(abs, base, dstPath, 1)
+					dst := strings.Replace(abs, root, dstPath, 1)
 					jobs <- []string{abs, dst}
 
 				} else {
@@ -165,25 +165,6 @@ func main() {
 	p("done")
 }
 
-func p(s string, i ...interface{}) {
-	now := time.Now()
-	t := strings.ToLower(strings.TrimRight(now.Format("3.04PM"), "M"))
-	notice := fmt.Sprintf("%s | %s", t, fmt.Sprintf(s, i...))
-	fmt.Println(notice)
-}
-func chkFatal(err error) {
-	if err != nil {
-		fmt.Println("----------------------")
-		panic(err)
-	}
-}
-func chk(err error) {
-	if err != nil {
-		fmt.Println("----------------------")
-		fmt.Println(err)
-		fmt.Println("----------------------")
-	}
-}
 func run(args ...string) error {
 	cmd := exec.Command(args[0], args[1:]...)
 	if watch {
@@ -195,28 +176,12 @@ func run(args ...string) error {
 		cmd.Stderr = mw
 	}
 	return cmd.Run()
+}
 
-}
-func printCmd(cmd []string) {
-	var parts []string
-	for _, c := range cmd {
-		if strings.Contains(c, " ") {
-			c = fmt.Sprintf("\"%s\"", c)
-		}
-		parts = append(parts, c)
-	}
-	p(strings.Join(parts, " "))
-}
-func humanSize(b int64) string {
-	const unit = 1000
-	if b < unit {
-		return fmt.Sprintf("%8dB", b)
-	}
-	div, exp := int64(unit), 0
-	for n := b / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%6.1f%cB",
-		float64(b)/float64(div), "kMGTPE"[exp])
-}
+var (
+	p         = base.P
+	chk       = base.Chk
+	chkFatal  = base.ChkFatal
+	humanSize = base.HumanSize
+	printCmd  = base.PrintCmd
+)

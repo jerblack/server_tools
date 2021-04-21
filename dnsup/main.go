@@ -4,13 +4,13 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"github.com/jerblack/server_tools/base"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
-	"time"
 )
 
 /*
@@ -116,7 +116,10 @@ func getDomainId() {
 	setHeaders(req)
 	rsp, e := client.Do(req)
 	chk(e)
-	defer rsp.Body.Close()
+	defer func() {
+		e = rsp.Body.Close()
+		chk(e)
+	}()
 	rspData, e := ioutil.ReadAll(rsp.Body)
 	var results CfResults
 	e = json.Unmarshal(rspData, &results)
@@ -143,7 +146,10 @@ func getHostId() {
 	setHeaders(req)
 	rsp, e := client.Do(req)
 	chk(e)
-	defer rsp.Body.Close()
+	defer func() {
+		e = rsp.Body.Close()
+		chk(e)
+	}()
 	rspData, e := ioutil.ReadAll(rsp.Body)
 	var results CfResults
 	e = json.Unmarshal(rspData, &results)
@@ -167,7 +173,10 @@ func updateDNS() {
 	setHeaders(req)
 	rsp, e := client.Do(req)
 	chk(e)
-	defer rsp.Body.Close()
+	defer func() {
+		e = rsp.Body.Close()
+		chk(e)
+	}()
 	rspData, e := ioutil.ReadAll(rsp.Body)
 	rspText := string(rspData)
 	if strings.Contains(rspText, `"success":true`) {
@@ -203,32 +212,10 @@ func main() {
 	updateDNS()
 }
 
-func p(s string, i ...interface{}) {
-	now := time.Now()
-	t := strings.ToLower(strings.TrimRight(now.Format("3.04PM"), "M"))
-	notice := fmt.Sprintf("%s | %s", t, fmt.Sprintf(s, i...))
-	fmt.Println(notice)
-}
-func chkFatal(err error) {
-	if err != nil {
-		fmt.Println("----------------------")
-		panic(err)
-	}
-}
-func chk(err error) {
-	if err != nil {
-		fmt.Println("----------------------")
-		fmt.Println(err)
-		fmt.Println("----------------------")
-	}
-}
-func getFile(file string) string {
-	b, e := os.ReadFile(file)
-	if e == nil {
-		return strings.TrimSpace(string(b))
-	}
-	return ""
-}
-func setFile(file, val string) {
-	_ = os.WriteFile(file, []byte(val), 0400)
-}
+var (
+	p        = base.P
+	chk      = base.Chk
+	chkFatal = base.ChkFatal
+	getFile  = base.GetFile
+	setFile  = base.SetFile
+)

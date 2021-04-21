@@ -1,18 +1,15 @@
 package main
 
 import (
-	"bytes"
 	_ "embed"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	delugeclient "github.com/gdm85/go-libdeluge"
-	"io"
+	"github.com/jerblack/server_tools/base"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -83,7 +80,10 @@ func (d *Deluge) getClient() {
 func (d *Deluge) removeFinishedTorrents() {
 	e := d.client.Connect()
 	chkFatal(e)
-	defer d.client.Close()
+	defer func() {
+		e = d.client.Close()
+		chk(e)
+	}()
 
 	var torrents []DelugeTorrent
 	tors, e := d.client.TorrentsStatus(delugeclient.StateUnspecified, nil)
@@ -158,7 +158,7 @@ func (d *Deluge) linkFinished() {
 				if strings.HasSuffix(f, seedMarker) {
 					// delete marker with no marked file
 					markedFile := strings.TrimSuffix(f, seedMarker)
-					if !isStringVal(allFiles[k], markedFile) {
+					if !isAny(markedFile, allFiles[k]...) {
 						p("deleting orphan marker: %s", f)
 						err = os.Remove(f)
 						chkFatal(err)
@@ -166,7 +166,7 @@ func (d *Deluge) linkFinished() {
 				} else {
 					// link file with no marker, create marker
 					marker := f + seedMarker
-					if !isStringVal(allFiles[k], marker) {
+					if !isAny(marker, allFiles[k]...) {
 						relPath := strings.TrimPrefix(f, d.doneFolder)
 						preProcPath := filepath.Join(preProcFolder, relPath)
 						preProcRel, _ := filepath.Split(preProcPath)
@@ -196,7 +196,10 @@ func (d *Deluge) checkFinishedTorrents() {
 func (d *Deluge) addMagnet(magnetPath string) {
 	e := d.client.Connect()
 	chkFatal(e)
-	defer d.client.Close()
+	defer func() {
+		e = d.client.Close()
+		chk(e)
+	}()
 	p("adding magnet file to %s: %s", d.name, magnetPath)
 	f, e := os.ReadFile(magnetPath)
 	chkFatal(e)
@@ -212,7 +215,10 @@ func (d *Deluge) addMagnet(magnetPath string) {
 func (d *Deluge) addTorrent(torrentPath string) {
 	e := d.client.Connect()
 	chkFatal(e)
-	defer d.client.Close()
+	defer func() {
+		e = d.client.Close()
+		chk(e)
+	}()
 	p("adding torrent file to %s: %s", d.name, torrentPath)
 	t, e := os.ReadFile(torrentPath)
 	chkFatal(e)
@@ -384,14 +390,14 @@ func (tf *TorFile) torrent(torrentPath string) {
 type Proc struct{}
 
 func (pr *Proc) extractPreProc() {
-	if ok, e := isDirEmpty(preProcFolder); e == nil && !ok {
+	if !isDirEmpty(preProcFolder) {
 		p("running extract in %s", preProcFolder)
 		err := run("/usr/bin/extract", preProcFolder)
 		chk(err)
 	}
 }
 func (pr *Proc) muxPreProc() {
-	if ok, e := isDirEmpty(preProcFolder); e == nil && !ok {
+	if !isDirEmpty(preProcFolder) {
 		p("running mux in %s", preProcFolder)
 		cmd := []string{"/usr/bin/mux", "-r", "-p", preProcFolder, "-mc", convertFolder}
 		if probFolder != "" {
@@ -405,7 +411,7 @@ func (pr *Proc) muxPreProc() {
 func (pr *Proc) muxConvert() {
 	for {
 		time.Sleep(time.Duration(convertInterval) * time.Second)
-		if ok, e := isDirEmpty(convertFolder); e == nil && !ok {
+		if isDirEmpty(convertFolder) {
 			p("running mux in %s", convertFolder)
 			cmd := []string{"/usr/bin/mux", "-r", "-p", convertFolder, "-mf", procFolder}
 			if probFolder != "" {
@@ -430,9 +436,7 @@ func main() {
 		for _, dd := range delugeDaemons {
 			dd.checkFinishedTorrents()
 		}
-		empty, e := isDirEmpty(preProcFolder)
-		chkFatal(e)
-		if !empty {
+		if !isDirEmpty(preProcFolder) {
 			proc.extractPreProc()
 			proc.muxPreProc()
 			mvTree(preProcFolder, procFolder, true)
@@ -531,115 +535,16 @@ func isUpgrade(new, old string) bool {
 	}
 	return false
 }
-func rmEmptyFolders(root string) {
-	var folders []string
-	root, _ = filepath.Abs(root)
-	walk := func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			path, _ = filepath.Abs(path)
-			if root != path {
-				folders = append(folders, path)
-			}
-		}
-		return nil
-	}
-	err := filepath.Walk(root, walk)
-	chkFatal(err)
 
-	fn := func(i, j int) bool {
-		// reverse sort
-		return len(folders[j]) < len(folders[i])
-	}
-	sort.Slice(folders, fn)
-	for _, f := range folders {
-		if empty, _ := isDirEmpty(f); empty {
-			err = os.Remove(f)
-			chk(err)
-		}
-	}
-}
-
-func isDirEmpty(name string) (bool, error) {
-	f, err := os.Open(name)
-	if err != nil {
-		return false, err
-	}
-	defer f.Close()
-
-	// read in ONLY one file
-	_, err = f.Readdir(1)
-
-	// if file is EOF the dir is empty.
-	if err == io.EOF {
-		return true, nil
-	}
-	if err == io.EOF {
-		return true, nil
-	}
-	return false, err
-}
-func getAltPath(path string) string {
-	i := 1
-	newPath := path
-	for {
-		_, e := os.Stat(newPath)
-		if errors.Is(e, os.ErrNotExist) {
-			return newPath
-		}
-		newPath = fmt.Sprintf("%s.%d", path, i)
-		i += 1
-	}
-
-}
-
-func p(s string, i ...interface{}) {
-	now := time.Now()
-	t := strings.ToLower(strings.TrimRight(now.Format("3.04PM"), "M"))
-	notice := fmt.Sprintf("%s | %s", t, fmt.Sprintf(s, i...))
-	fmt.Println(notice)
-}
-func chkFatal(err error) {
-	if err != nil {
-		fmt.Println("----------------------")
-		panic(err)
-	}
-}
-func chk(err error) {
-	if err != nil {
-		fmt.Println("----------------------")
-		fmt.Println(err)
-		fmt.Println("----------------------")
-	}
-}
-func isStringVal(slice []string, val string) bool {
-	for _, item := range slice {
-		if item == val {
-			return true
-		}
-	}
-	return false
-}
-func containsString(s string, subs ...string) bool {
-	for _, sub := range subs {
-		if sub != "" && strings.Contains(s, sub) {
-			return true
-		}
-	}
-	return false
-}
-
-func run(args ...string) error {
-	cmd := exec.Command(args[0], args[1:]...)
-
-	var stdBuffer bytes.Buffer
-	mw := io.MultiWriter(os.Stdout, &stdBuffer)
-
-	cmd.Stdout = mw
-	cmd.Stderr = mw
-
-	return cmd.Run()
-
-}
+var (
+	p        = base.P
+	chk      = base.Chk
+	chkFatal = base.ChkFatal
+	//isStringVal = base.IsStringVal
+	containsString = base.ContainsString
+	run            = base.Run
+	rmEmptyFolders = base.RmEmptyFolders
+	isDirEmpty     = base.IsDirEmpty
+	getAltPath     = base.GetAltPath
+	isAny          = base.IsAny
+)
