@@ -6,6 +6,9 @@ TODO: MUX: handle -> Warning: '***.srt' track 0: Warning in line 2568: The start
 
 TODO: HYDRA: add conf option to auto-delete after x days seeded
 TODO: HYDRA: add conf option to auto-delete torrents after x days unfinished & mark in sonarr as dead
+TODO: HYDRA: move files from sab folder to pre-proc if not picked up by sonarr after x time
+TODO: HYDRA: if progress is 100% but state is not seeding after x checks, force deluge recheck
+TODO: HYDRA: if progress is 100% and state is seeding after x checks, move storage to seeding folder
 
 TODO: HYDRA: why is hydra docker silently exiting?
 

@@ -79,11 +79,14 @@ func (d *Deluge) getClient() {
 }
 func (d *Deluge) removeFinishedTorrents() {
 	e := d.client.Connect()
-	chkFatal(e)
-	defer func() {
-		e = d.client.Close()
+	if e != nil {
 		chk(e)
-	}()
+		return
+	}
+	defer func(dc *delugeclient.Client) {
+		e = dc.Close()
+		chk(e)
+	}(d.client)
 
 	var torrents []DelugeTorrent
 	tors, e := d.client.TorrentsStatus(delugeclient.StateUnspecified, nil)
@@ -195,11 +198,14 @@ func (d *Deluge) checkFinishedTorrents() {
 }
 func (d *Deluge) addMagnet(magnetPath string) {
 	e := d.client.Connect()
-	chkFatal(e)
-	defer func() {
-		e = d.client.Close()
+	if e != nil {
 		chk(e)
-	}()
+		return
+	}
+	defer func(dc *delugeclient.Client) {
+		e = dc.Close()
+		chk(e)
+	}(d.client)
 	p("adding magnet file to %s: %s", d.name, magnetPath)
 	f, e := os.ReadFile(magnetPath)
 	chkFatal(e)
@@ -214,11 +220,14 @@ func (d *Deluge) addMagnet(magnetPath string) {
 }
 func (d *Deluge) addTorrent(torrentPath string) {
 	e := d.client.Connect()
-	chkFatal(e)
-	defer func() {
-		e = d.client.Close()
+	if e != nil {
 		chk(e)
-	}()
+		return
+	}
+	defer func(dc *delugeclient.Client) {
+		e = dc.Close()
+		chk(e)
+	}(d.client)
 	p("adding torrent file to %s: %s", d.name, torrentPath)
 	t, e := os.ReadFile(torrentPath)
 	chkFatal(e)
