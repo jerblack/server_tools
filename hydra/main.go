@@ -91,6 +91,9 @@ func (d *Deluge) removeFinishedTorrents() {
 	var torrents []DelugeTorrent
 	tors, e := d.client.TorrentsStatus(delugeclient.StateUnspecified, nil)
 	chk(e)
+	if e != nil {
+		p("%+v", tors)
+	}
 	for k, v := range tors {
 		var dt DelugeTorrent
 		dt.id = k
