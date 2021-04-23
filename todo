@@ -1,17 +1,24 @@
-TODO: ALL: Rollback all embedded conf files and secrets for runtime secrets instead
-
 TODO: MUX: handle -> mkvmerge warning : This text subtitle track contains invalid 8-bit characters outside valid multi-byte UTF-8 sequences
 TODO: MUX: handle -> This audio track contains 2142 bytes of invalid data which were skipped before timestamp 00:42:22.048000000. The audio/video synchronization may have been lost.
 TODO: MUX: handle -> Warning: '***.srt' track 0: Warning in line 2568: The start timestamp is smaller than that of the previous entry. All entries from this file will be sorted by their start time.
 
-TODO: HYDRA: add conf option to auto-delete after x days seeded
+TODO: HYDRA: add conf option to auto-delete after x days seeded (IPT requires 14 days or `1:1 ratio`)
 TODO: HYDRA: add conf option to auto-delete torrents after x days unfinished & mark in sonarr as dead
-TODO: HYDRA: move files from sab folder to pre-proc if not picked up by sonarr after x time
-TODO: HYDRA: if progress is 100% but state is not seeding after x checks, force deluge recheck
-TODO: HYDRA: if progress is 100% and state is seeding after x checks, move storage to seeding folder
 
-TODO: HYDRA: why is hydra docker silently exiting?
+TODO: SSD_FLUSH: <- build
 
 TODO: DUPER: index files deterministically
 
 TODO: SNAPRAID : automate snapraid sync, snapraid scrub
+
+TODO: MOVIE_SORTER (m)
+
+-- wait for more info --
+TODO: HYDRA: move files from sab folder to pre-proc if not picked up by sonarr after x time
+
+
+-- done but need to verify --
+TODO: HYDRA: if progress is 100% but state is not seeding after x checks, force deluge recheck
+TODO: HYDRA: if progress is 100% and state is seeding after x checks, move storage to seeding folder
+TODO: HYDRA: need to remove empty folders from torrent done folders
+TODO: HYDRA: need to verify that torrents are in done folder and not still in dl folder before removing them (MoveStorage first)

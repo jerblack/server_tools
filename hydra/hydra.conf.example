@@ -44,6 +44,12 @@ problem_folder = /x/_mux_problems
 #       if you are configuring multiple deluge daemons. If a new magnet or torrent file doesn't contain any of the specified
 #       trackers, it will be sent to the default tracker instead.
 
+# sabnzbd configuration
+sab_ip =
+sab_port =
+sab_api =
+
+
 [public]
 default = true
 ip = 192.168.100.10

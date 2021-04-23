@@ -1,0 +1,15 @@
+# lives in /lib/systemd/system/ssd_flush.service
+
+[Unit]
+Description=ssd_flush
+Requires=mnt-ssd01.mount mnt-ssd02.mount mnt-ssd03.mount mnt-ssd04.mount mnt-zhdd.mount
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/ssd_flush
+User=jeremy
+Group=jeremy
+
+# systemd logs to journal by default, and all writes to stdout are visible in the journal
+# run the following to view logs for this service:
+#       journalctl -u ssd_flush.service
