@@ -4,7 +4,7 @@ import (
 	_ "embed"
 	"encoding/base64"
 	"errors"
-	delugeclient "github.com/gdm85/go-libdeluge"
+	delugeclient "github.com/jerblack/go-libdeluge"
 	"github.com/jerblack/server_tools/base"
 	"os"
 	"os/exec"
@@ -33,6 +33,8 @@ var (
 	defaultDeluge *Deluge
 	torFile       TorFile
 	proc          Proc
+
+	sabApi, sabIp, sabPort string
 )
 
 type DelugeTorrent struct {
@@ -70,12 +72,55 @@ type Deluge struct {
 	port                             uint
 	keepDone                         bool
 	client                           *delugeclient.Client
+	stuckDl                          map[string]int
+	stuckSeeds                       map[string]int
 }
 
 func (d *Deluge) getClient() {
 	d.client = delugeclient.NewV1(delugeclient.Settings{
 		Port: d.port, Login: d.user, Password: d.pass,
 	})
+	d.stuckDl = make(map[string]int)
+	d.stuckSeeds = make(map[string]int)
+
+}
+func (d *Deluge) checkStuckTorrents() {
+	e := d.client.Connect()
+	if e != nil {
+		chk(e)
+		return
+	}
+	defer func(dc *delugeclient.Client) {
+		e = dc.Close()
+		chk(e)
+	}(d.client)
+
+	tors, e := d.client.TorrentsStatus(delugeclient.StateUnspecified, nil)
+	if e != nil && !strings.Contains(e.Error(), `field "ETA"`) {
+		chk(e)
+	}
+	for k, v := range tors {
+		if v.State == "Downloading" && v.Progress == 100 {
+			n := d.stuckDl[k]
+			n = n + 1
+			d.stuckDl[k] = n
+			if n >= 3 {
+				delete(d.stuckDl, k)
+				e = d.client.ForceRecheck(k)
+				chk(e)
+			}
+		}
+		if v.State == "Seeding" && v.Progress == 100 && v.SavePath != d.doneFolder {
+			n := d.stuckSeeds[k]
+			n = n + 1
+			d.stuckSeeds[k] = n
+			if n >= 3 {
+				delete(d.stuckSeeds, k)
+				e = d.client.MoveStorage([]string{k}, d.doneFolder)
+				chk(e)
+			}
+		}
+	}
 }
 func (d *Deluge) removeFinishedTorrents() {
 	e := d.client.Connect()
@@ -90,16 +135,15 @@ func (d *Deluge) removeFinishedTorrents() {
 
 	var torrents []DelugeTorrent
 	tors, e := d.client.TorrentsStatus(delugeclient.StateUnspecified, nil)
-	chk(e)
-	if e != nil {
-		p("%+v", tors)
+	if e != nil && !strings.Contains(e.Error(), `field "ETA"`) {
+		chk(e)
 	}
 	for k, v := range tors {
 		var dt DelugeTorrent
 		dt.id = k
 		dt.name = v.Name
 		dt.deluge = d
-		if v.IsSeed && v.IsFinished && v.State == "Seeding" && v.Progress == 100 {
+		if v.IsSeed && v.IsFinished && v.State == "Seeding" && v.Progress == 100 && v.SavePath == d.doneFolder {
 			path := filepath.Join(d.doneFolder, v.Files[0].Path)
 			_, e = os.Stat(path)
 			if e == nil {
@@ -128,6 +172,7 @@ func (d *Deluge) removeFinishedTorrents() {
 		chk(e)
 		dt.move()
 	}
+	rmEmptyFolders(d.doneFolder)
 }
 func (d *Deluge) linkFinished() {
 	allFiles := make(map[string][]string)
@@ -329,6 +374,12 @@ func parseConfig() {
 				for _, t := range strings.Split(v, " ") {
 					deluge.trackers = append(deluge.trackers, t)
 				}
+			case "sab_ip":
+				sabIp = v
+			case "sab_port":
+				sabPort = v
+			case "sab_api":
+				sabApi = v
 			}
 		}
 	}
@@ -447,6 +498,7 @@ func main() {
 		time.Sleep(time.Duration(delugeInterval) * time.Second)
 		for _, dd := range delugeDaemons {
 			dd.checkFinishedTorrents()
+			dd.checkStuckTorrents()
 		}
 		if !isDirEmpty(preProcFolder) {
 			proc.extractPreProc()
