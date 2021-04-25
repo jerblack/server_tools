@@ -25,10 +25,10 @@ import (
 	- will not run while snapraid is active
 
 	service depends on
-		mnt-ssd01.mount                                                                                                                                                    loaded active mounted   /mnt/ssd01
-		mnt-ssd02.mount                                                                                                                                                    loaded active mounted   /mnt/ssd02
-		mnt-ssd03.mount                                                                                                                                                    loaded active mounted   /mnt/ssd03
-		mnt-ssd04.mount                                                                                                                                                    loaded active mounted   /mnt/ssd04
+		mnt-ssd01.mount
+		mnt-ssd02.mount
+		mnt-ssd03.mount
+		mnt-ssd04.mount
 		mnt-zhdd.mount
 
 */
@@ -42,7 +42,7 @@ var (
 	}
 	array = "/mnt/zhdd"
 
-	moveAge = 6 // hours
+	moveAge = 1 // hours
 )
 
 func isSnapraidRunning() bool {
@@ -78,15 +78,19 @@ func moveOldFiles() {
 		folders = []string{}
 		err := filepath.Walk(ssd, walk)
 		chk(err)
-		for _, folder := range folders {
+		numFile := len(files)
+		numFolder := len(folders)
+		p("found %d files on %s to move", numFile, ssd)
+		p("found %d folders on %s to move", numFolder, ssd)
+		for i, folder := range folders {
 			folder = strings.Replace(folder, ssd, array, 1)
-			p("creating folder: %s", folder)
+			p("%d/%d creating folder: %s", i, numFolder, folder)
 			err = os.MkdirAll(folder, 0777)
 			chkFatal(err)
 		}
-		for _, src := range files {
+		for i, src := range files {
 			dst := strings.Replace(src, ssd, array, 1)
-			p("moving file: %s -> %s", ssd, dst)
+			p("%d/%d moving file: %s -> %s", i+1, numFile, ssd, dst)
 			e := run("rsync", "-aWmvh", "--preallocate", "--remove-source-files", src, dst)
 			chkFatal(e)
 		}

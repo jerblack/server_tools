@@ -78,7 +78,7 @@ type Deluge struct {
 
 func (d *Deluge) getClient() {
 	d.client = delugeclient.NewV1(delugeclient.Settings{
-		Port: d.port, Login: d.user, Password: d.pass,
+		Port: d.port, Login: d.user, Password: d.pass, Hostname: d.ip,
 	})
 	d.stuckDl = make(map[string]int)
 	d.stuckSeeds = make(map[string]int)
