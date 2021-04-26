@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/jerblack/server_tools/base"
+	"golang.org/x/net/html/charset"
+	"golang.org/x/text/transform"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -536,6 +538,9 @@ func (j *Job) getExternalSubs() {
 			if strings.HasPrefix(subFname, src) {
 				j.mux = true
 				p("found sub: %s", path)
+				p("converting external subtitle text encoding to UTF-8")
+				convertTextUtf8(path)
+
 				if strings.HasSuffix(strings.ToLower(path), ".idx") {
 					p("verifying idx file")
 					if cleanIdx(path) {
@@ -689,6 +694,17 @@ func cleanIdx(f string) bool {
 		return false
 	}
 	return true
+}
+func convertTextUtf8(f string) {
+	st, e := os.Stat(f)
+	chkFatal(e)
+	b, e := os.ReadFile(f)
+	chkFatal(e)
+	c, _, _ := charset.DetermineEncoding(b, "")
+	out, _, e := transform.Bytes(c.NewDecoder(), b)
+	chkFatal(e)
+	e = os.WriteFile(f, out, st.Mode())
+	chkFatal(e)
 }
 
 type Stream struct {
