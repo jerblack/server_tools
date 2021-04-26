@@ -65,20 +65,88 @@ func (dt *DelugeTorrent) moveFiles() {
 		mvTree(src, dst, true)
 	}
 }
+func (dt *DelugeTorrent) linkFiles() error {
+	p("linking %d files from torrent %s", len(dt.files), dt.name)
+
+	for _, src := range dt.files {
+		dst := strings.Replace(src, dt.deluge.doneFolder, preProcFolder, 1)
+		e := os.MkdirAll(filepath.Dir(dst), 0770)
+		if e != nil {
+			return e
+		}
+		e = os.Link(src, dst)
+		if e != nil {
+			return e
+		}
+	}
+	return nil
+}
 func (dt *DelugeTorrent) moveStorage() error {
 	p("move torrent to new storage location: %s -> %s", dt.name, dt.deluge.seedFolder)
 	return dt.deluge.client.MoveStorage([]string{dt.id}, dt.deluge.seedFolder)
 }
 
 type Deluge struct {
-	name, ip, user, pass   string
-	doneFolder, seedFolder string
-	trackers               []string
-	port                   uint
-	keepDone               bool
-	client                 *delugeclient.Client
-	stuckDl                map[string]int
-	stuckSeeds             map[string]int
+	name, ip, user, pass                   string
+	doneFolder, seedFolder, downloadFolder string
+	trackers                               []string
+	port                                   uint
+	keepDone                               bool
+	client                                 *delugeclient.Client
+	stuckDl                                map[string]int
+	stuckSeeds                             map[string]int
+	finished                               []string
+}
+
+func (d *Deluge) open() bool {
+	e := d.client.Connect()
+	if e != nil {
+		chk(e)
+		return false
+	}
+	return true
+}
+func (d *Deluge) close() {
+	e := d.client.Close()
+	chk(e)
+}
+func (d *Deluge) getFinished() []DelugeTorrent {
+	var torrents []DelugeTorrent
+	tors, e := d.client.TorrentsStatus(delugeclient.StateUnspecified, nil)
+	if e != nil && !strings.Contains(e.Error(), `field "ETA"`) {
+		chk(e)
+	}
+	var fin []string
+	for k, v := range tors {
+		var dt DelugeTorrent
+		dt.id = k
+		dt.name = v.Name
+		dt.deluge = d
+		if v.IsSeed && v.IsFinished && v.State == "Seeding" && v.Progress == 100 && v.SavePath == d.doneFolder {
+			if isAny(k, d.finished...) {
+				fin = append(fin, k)
+				continue
+			}
+			path := filepath.Join(d.doneFolder, v.Files[0].Path)
+			_, e = os.Stat(path)
+			if e == nil {
+				var files []string
+				for _, f := range v.Files {
+					files = append(files, filepath.Join(d.doneFolder, f.Path))
+				}
+				dt.files = files
+
+				_p := v.Files[0].Path
+				if strings.Contains(_p, "/") {
+					dt.relPath = strings.SplitN(_p, "/", 2)[0]
+				}
+				torrents = append(torrents, dt)
+				fin = append(fin, k)
+			}
+		}
+	}
+	d.finished = fin
+	return torrents
 }
 
 func (d *Deluge) getClient() {
@@ -115,7 +183,7 @@ func (d *Deluge) checkStuckTorrents() {
 				chk(e)
 			}
 		}
-		if v.State == "Seeding" && v.Progress == 100 && v.SavePath != d.doneFolder && v.SavePath != d.seedFolder {
+		if v.State == "Seeding" && v.Progress == 100 && v.SavePath == d.downloadFolder {
 			n := d.stuckSeeds[k]
 			n = n + 1
 			d.stuckSeeds[k] = n
@@ -128,47 +196,16 @@ func (d *Deluge) checkStuckTorrents() {
 	}
 }
 func (d *Deluge) removeFinishedTorrents() {
-	e := d.client.Connect()
-	if e != nil {
-		chk(e)
+	if !d.open() {
 		return
 	}
-	defer func(dc *delugeclient.Client) {
-		e = dc.Close()
-		chk(e)
-	}(d.client)
+	defer d.close()
 
-	var torrents []DelugeTorrent
-	tors, e := d.client.TorrentsStatus(delugeclient.StateUnspecified, nil)
-	if e != nil && !strings.Contains(e.Error(), `field "ETA"`) {
-		chk(e)
-	}
-	for k, v := range tors {
-		var dt DelugeTorrent
-		dt.id = k
-		dt.name = v.Name
-		dt.deluge = d
-		if v.IsSeed && v.IsFinished && v.State == "Seeding" && v.Progress == 100 && v.SavePath == d.doneFolder {
-			path := filepath.Join(d.doneFolder, v.Files[0].Path)
-			_, e = os.Stat(path)
-			if e == nil {
-				var files []string
-				for _, f := range v.Files {
-					files = append(files, filepath.Join(d.doneFolder, f.Path))
-				}
-				dt.files = files
+	torrents := d.getFinished()
 
-				_p := v.Files[0].Path
-				if strings.Contains(_p, "/") {
-					dt.relPath = strings.SplitN(_p, "/", 2)[0]
-				}
-			}
-			torrents = append(torrents, dt)
-		}
-	}
 	for _, dt := range torrents {
 		p("torrent finished: %s", dt.name)
-		e = dt.pause()
+		e := dt.pause()
 		if e != nil {
 			p(e.Error())
 			continue
@@ -178,6 +215,20 @@ func (d *Deluge) removeFinishedTorrents() {
 		dt.moveFiles()
 	}
 	rmEmptyFolders(d.doneFolder)
+}
+func (d *Deluge) linkFinishedTorrents() {
+	if !d.open() {
+		return
+	}
+	defer d.close()
+	torrents := d.getFinished()
+	for _, dt := range torrents {
+		p("torrent finished: %s", dt.name)
+		e := dt.linkFiles()
+		chkFatal(e)
+		e = dt.moveStorage()
+		chkFatal(e)
+	}
 }
 func (d *Deluge) linkFinished() {
 	allFiles := make(map[string][]string)
@@ -243,22 +294,17 @@ func (d *Deluge) linkFinished() {
 }
 func (d *Deluge) checkFinishedTorrents() {
 	if d.keepDone {
-		d.linkFinished()
+		d.linkFinishedTorrents()
 	} else {
 		d.removeFinishedTorrents()
 	}
 
 }
 func (d *Deluge) addMagnet(magnetPath string) {
-	e := d.client.Connect()
-	if e != nil {
-		chk(e)
+	if !d.open() {
 		return
 	}
-	defer func(dc *delugeclient.Client) {
-		e = dc.Close()
-		chk(e)
-	}(d.client)
+	defer d.close()
 	p("adding magnet file to %s: %s", d.name, magnetPath)
 	f, e := os.ReadFile(magnetPath)
 	chkFatal(e)
@@ -272,15 +318,10 @@ func (d *Deluge) addMagnet(magnetPath string) {
 	chkFatal(e)
 }
 func (d *Deluge) addTorrent(torrentPath string) {
-	e := d.client.Connect()
-	if e != nil {
-		chk(e)
+	if !d.open() {
 		return
 	}
-	defer func(dc *delugeclient.Client) {
-		e = dc.Close()
-		chk(e)
-	}(d.client)
+	defer d.close()
 	p("adding torrent file to %s: %s", d.name, torrentPath)
 	t, e := os.ReadFile(torrentPath)
 	chkFatal(e)
@@ -372,6 +413,8 @@ func parseConfig() {
 				if reTrue.MatchString(v) {
 					deluge.keepDone = true
 				}
+			case "download_folder":
+				deluge.downloadFolder = v
 			case "finished_folder":
 				deluge.doneFolder = v
 			case "seed_folder":
