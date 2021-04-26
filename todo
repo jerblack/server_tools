@@ -21,6 +21,7 @@ TODO: HYDRA: move files from sab folder to pre-proc if not picked up by sonarr a
 
 -- done but need to verify --
 TODO: HYDRA: if progress is 100% but state is not seeding after x checks, force deluge recheck
+    ^ done, but need to monitor if problem reoccurs ^
 TODO: HYDRA: if progress is 100% and state is seeding after x checks, move storage to seeding folder
 TODO: HYDRA: need to remove empty folders from torrent done folders
 TODO: HYDRA: need to verify that torrents are in done folder and not still in dl folder before removing them (MoveStorage first)

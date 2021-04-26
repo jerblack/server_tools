@@ -51,7 +51,7 @@ func (dt *DelugeTorrent) remove() (bool, error) {
 	p("removing torrent %s", dt.name)
 	return dt.deluge.client.RemoveTorrent(dt.id, false)
 }
-func (dt *DelugeTorrent) move() {
+func (dt *DelugeTorrent) moveFiles() {
 	p("moving %d files from torrent %s", len(dt.files), dt.name)
 	if dt.relPath == "" {
 		for _, f := range dt.files {
@@ -65,15 +65,20 @@ func (dt *DelugeTorrent) move() {
 		mvTree(src, dst, true)
 	}
 }
+func (dt *DelugeTorrent) moveStorage() error {
+	p("move torrent to new storage location: %s -> %s", dt.name, dt.deluge.seedFolder)
+	return dt.deluge.client.MoveStorage([]string{dt.id}, dt.deluge.seedFolder)
+}
 
 type Deluge struct {
-	name, ip, user, pass, doneFolder string
-	trackers                         []string
-	port                             uint
-	keepDone                         bool
-	client                           *delugeclient.Client
-	stuckDl                          map[string]int
-	stuckSeeds                       map[string]int
+	name, ip, user, pass   string
+	doneFolder, seedFolder string
+	trackers               []string
+	port                   uint
+	keepDone               bool
+	client                 *delugeclient.Client
+	stuckDl                map[string]int
+	stuckSeeds             map[string]int
 }
 
 func (d *Deluge) getClient() {
@@ -110,7 +115,7 @@ func (d *Deluge) checkStuckTorrents() {
 				chk(e)
 			}
 		}
-		if v.State == "Seeding" && v.Progress == 100 && v.SavePath != d.doneFolder {
+		if v.State == "Seeding" && v.Progress == 100 && v.SavePath != d.doneFolder && v.SavePath != d.seedFolder {
 			n := d.stuckSeeds[k]
 			n = n + 1
 			d.stuckSeeds[k] = n
@@ -170,7 +175,7 @@ func (d *Deluge) removeFinishedTorrents() {
 		}
 		_, e = dt.remove()
 		chk(e)
-		dt.move()
+		dt.moveFiles()
 	}
 	rmEmptyFolders(d.doneFolder)
 }
@@ -369,6 +374,8 @@ func parseConfig() {
 				}
 			case "finished_folder":
 				deluge.doneFolder = v
+			case "seed_folder":
+				deluge.seedFolder = v
 			case "trackers":
 				v = reSpaces.ReplaceAllString(v, " ")
 				for _, t := range strings.Split(v, " ") {

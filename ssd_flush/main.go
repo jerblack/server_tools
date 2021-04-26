@@ -91,6 +91,8 @@ func moveOldFiles() {
 		for i, src := range files {
 			dst := strings.Replace(src, ssd, array, 1)
 			p("%d/%d moving file: %s -> %s", i+1, numFile, ssd, dst)
+			err = os.MkdirAll(filepath.Dir(dst), 0777)
+			chkFatal(err)
 			e := run("rsync", "-aWmvh", "--preallocate", "--remove-source-files", src, dst)
 			chkFatal(e)
 		}
