@@ -158,15 +158,10 @@ func (d *Deluge) getClient() {
 
 }
 func (d *Deluge) checkStuckTorrents() {
-	e := d.client.Connect()
-	if e != nil {
-		chk(e)
+	if !d.open() {
 		return
 	}
-	defer func(dc *delugeclient.Client) {
-		e = dc.Close()
-		chk(e)
-	}(d.client)
+	defer d.close()
 
 	tors, e := d.client.TorrentsStatus(delugeclient.StateUnspecified, nil)
 	if e != nil && !strings.Contains(e.Error(), `field "ETA"`) {
@@ -230,68 +225,7 @@ func (d *Deluge) linkFinishedTorrents() {
 		chkFatal(e)
 	}
 }
-func (d *Deluge) linkFinished() {
-	allFiles := make(map[string][]string)
-	allFolders := make(map[string][]string)
 
-	walk := func(p string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		path, _ := filepath.Split(p)
-		if info.IsDir() {
-			allFiles[p+"/"] = make([]string, 0)
-			allFolders[p+"/"] = make([]string, 0)
-			allFolders[path] = append(allFolders[path], p)
-		} else {
-			allFiles[path] = append(allFiles[path], p)
-		}
-		return nil
-	}
-	err := filepath.Walk(d.doneFolder, walk)
-	chkFatal(err)
-
-	for k, v := range allFiles {
-		if len(v) == 0 && len(allFolders[k]) == 0 {
-			// check for and delete empty folder
-			if k != d.doneFolder+"/" {
-				p("deleting empty folder: %s", k)
-				err = os.Remove(k)
-				chkFatal(err)
-			}
-		} else {
-			for _, f := range v {
-				if strings.HasSuffix(f, seedMarker) {
-					// delete marker with no marked file
-					markedFile := strings.TrimSuffix(f, seedMarker)
-					if !isAny(markedFile, allFiles[k]...) {
-						p("deleting orphan marker: %s", f)
-						err = os.Remove(f)
-						chkFatal(err)
-					}
-				} else {
-					// link file with no marker, create marker
-					marker := f + seedMarker
-					if !isAny(marker, allFiles[k]...) {
-						relPath := strings.TrimPrefix(f, d.doneFolder)
-						preProcPath := filepath.Join(preProcFolder, relPath)
-						preProcRel, _ := filepath.Split(preProcPath)
-						p("linking new seed to pre-proc folder: %s", f)
-						err = os.MkdirAll(preProcRel, 0777)
-						chkFatal(err)
-						err = os.Link(f, preProcPath)
-						chkFatal(err)
-						m, err := os.Create(marker)
-						chkFatal(err)
-						err = m.Close()
-						chkFatal(err)
-					}
-				}
-			}
-		}
-	}
-}
 func (d *Deluge) checkFinishedTorrents() {
 	if d.keepDone {
 		d.linkFinishedTorrents()
