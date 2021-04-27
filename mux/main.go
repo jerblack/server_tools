@@ -544,6 +544,8 @@ func (j *Job) getExternalSubs() {
 			subFname := filepath.Base(strings.ToLower(path))
 			if strings.HasPrefix(subFname, src) {
 				p("found sub: %s", path)
+				p("ensuring external subtitle text encoding is UTF-8")
+				convertTextUtf8(path)
 				if strings.HasSuffix(strings.ToLower(path), ".idx") {
 					p("ensuring idx has language id set")
 					if !checkIdxNoId(path) {
@@ -564,10 +566,7 @@ func (j *Job) getExternalSubs() {
 				} else {
 					j.subtitles = append(j.subtitles, path)
 				}
-				p("converting external subtitle text encoding to UTF-8")
-				convertTextUtf8(path)
 				j.mux = true
-
 			}
 		}
 		return nil
