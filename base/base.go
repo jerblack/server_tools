@@ -209,3 +209,8 @@ func MvTree(src, dst string, removeEmpties bool) {
 		RmEmptyFolders(src)
 	}
 }
+
+func FileExists(f string) bool {
+	_, e := os.Stat(f)
+	return e == nil
+}

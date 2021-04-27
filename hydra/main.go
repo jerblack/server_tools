@@ -39,6 +39,8 @@ var (
 
 type DelugeTorrent struct {
 	name, id, relPath string
+	seedTime          int64
+	ratio             float32
 	files             []string
 	deluge            *Deluge
 }
@@ -92,6 +94,8 @@ type Deluge struct {
 	trackers                               []string
 	port                                   uint
 	keepDone                               bool
+	keepRatio                              float32
+	keepTime                               int64
 	client                                 *delugeclient.Client
 	stuckDl                                map[string]int
 	stuckSeeds                             map[string]int
@@ -121,6 +125,8 @@ func (d *Deluge) getFinished() []DelugeTorrent {
 		var dt DelugeTorrent
 		dt.id = k
 		dt.name = v.Name
+		dt.seedTime = v.SeedingTime
+		dt.ratio = v.Ratio
 		dt.deluge = d
 		if v.IsSeed && v.IsFinished && v.State == "Seeding" && v.Progress == 100 && v.SavePath == d.doneFolder {
 			if isAny(k, d.finished...) {
@@ -347,6 +353,15 @@ func parseConfig() {
 				if reTrue.MatchString(v) {
 					deluge.keepDone = true
 				}
+			case "keep_ratio":
+				ratio, e := strconv.ParseFloat(v, 32)
+				chkFatal(e)
+				deluge.keepRatio = float32(ratio)
+			case "keep_days":
+				days, e := strconv.ParseInt(v, 10, 64)
+				chkFatal(e)
+				// deluge reports seed_time in seconds
+				deluge.keepTime = days * 24 * 60 * 60
 			case "download_folder":
 				deluge.downloadFolder = v
 			case "finished_folder":
@@ -472,11 +487,35 @@ func (pr *Proc) muxConvert() {
 
 }
 
+func pruneTorrents() {
+	for {
+		p("checking for torrents to prune")
+		for _, d := range delugeDaemons {
+			if d.keepDone {
+				if !d.open() {
+					continue
+				}
+				torrents := d.getFinished()
+				for _, t := range torrents {
+					if t.seedTime > d.keepTime || t.ratio > d.keepRatio {
+						p("torrent %s being renamed from %s with ratio %f and seed time of %d days", t.name, d.name, t.ratio, t.seedTime/60/60/24)
+						_, e := t.remove()
+						chkFatal(e)
+					}
+				}
+				d.close()
+			}
+		}
+		time.Sleep(6 * time.Hour)
+	}
+}
+
 func main() {
 	parseConfig()
 	getDelugeClients()
 	go torFile.start()
 	go proc.muxConvert()
+	go pruneTorrents()
 
 	for {
 		time.Sleep(time.Duration(delugeInterval) * time.Second)

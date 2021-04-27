@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -76,6 +78,7 @@ var (
 	keptLangs                                            = []string{"eng", "en", "und", "mis", ""}
 	moveConvertPath, moveFinishedPath, relPath, probPath string
 	moveConvert, moveFinished, moveRel, moveProb         bool
+	recyclePath                                          = "/x/.config/_recycle"
 )
 
 func getArgs() {
@@ -348,8 +351,9 @@ type Job struct {
 	video, filename, basename, ext, baseWithPath string
 	tmpVideo, finalVideo                         string
 	subtitles, dotSubs                           []string
-	elementaryStreams                            []string
-	mux, convert                                 bool
+	//excludedSub									 []string
+	elementaryStreams []string
+	mux, convert      bool
 
 	Streams             []*Stream `json:"streams"`
 	vidStream           []*Stream
@@ -530,29 +534,40 @@ func (j *Job) buildCmdLine() {
 func (j *Job) getExternalSubs() {
 	src := strings.ToLower(j.basename)
 	walk := func(path string, info os.FileInfo, err error) error {
+		if !fileExists(path) {
+			return nil
+		}
 		if err != nil {
 			return err
 		}
 		if !info.IsDir() && isSub(path) {
 			subFname := filepath.Base(strings.ToLower(path))
 			if strings.HasPrefix(subFname, src) {
-				j.mux = true
 				p("found sub: %s", path)
-				p("converting external subtitle text encoding to UTF-8")
-				convertTextUtf8(path)
-
 				if strings.HasSuffix(strings.ToLower(path), ".idx") {
-					p("verifying idx file")
-					if cleanIdx(path) {
-						j.subtitles = append(j.subtitles, path)
-					} else {
+					p("ensuring idx has language id set")
+					if !checkIdxNoId(path) {
 						p("idx failed verification")
+						removeIdxSub(path)
+						return nil
 					}
+					p("Running idx warning checks")
+					e := checkUnusableIdx(path)
+					if e != nil {
+						p("idx failed validation with error: %s", e.Error())
+						removeIdxSub(path)
+						return nil
+					}
+					j.subtitles = append(j.subtitles, path)
 				} else if strings.HasSuffix(strings.ToLower(path), ".sub") {
 					j.dotSubs = append(j.dotSubs, path)
 				} else {
 					j.subtitles = append(j.subtitles, path)
 				}
+				p("converting external subtitle text encoding to UTF-8")
+				convertTextUtf8(path)
+				j.mux = true
+
 			}
 		}
 		return nil
@@ -560,6 +575,7 @@ func (j *Job) getExternalSubs() {
 	d := filepath.Dir(j.video)
 	err := filepath.Walk(d, walk)
 	chkFatal(err)
+
 }
 func (j *Job) printStreams() {
 	p("vidStream")
@@ -667,7 +683,36 @@ func (j *Job) move(path string) {
 	rmEmptyFolders(startPath)
 }
 
-func cleanIdx(f string) bool {
+func checkUnusableIdx(f string) error {
+	cmd := exec.Command("mkvmerge", "--abort-on-warnings", "-o", "/dev/null", f)
+	r, _ := cmd.StdoutPipe()
+	cmd.Stderr = cmd.Stdout
+	done := make(chan struct{})
+	scanner := bufio.NewScanner(r)
+	var errText string
+	re := regexp.MustCompile(`Warning: '.*': (.*)`)
+	go func() {
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.HasPrefix(line, "Warning:") {
+				warning := re.ReplaceAllString(line, "$1")
+				if strings.Contains(warning, "Unknown header") {
+					errText = warning
+				}
+			}
+		}
+		done <- struct{}{}
+	}()
+	cmd.Start()
+	<-done
+	cmd.Wait()
+	if errText != "" {
+		return errors.New(errText)
+	} else {
+		return nil
+	}
+}
+func checkIdxNoId(f string) bool {
 	idxB, e := os.ReadFile(f)
 	if e != nil {
 		chk(e)
@@ -695,6 +740,25 @@ func cleanIdx(f string) bool {
 	}
 	return true
 }
+func removeIdxSub(idx string) {
+	// find and delete companion sub
+	reIdx := regexp.MustCompile(`(?i)(.idx$)`)
+	reSub := regexp.MustCompile(`(?i)(.sub$)`)
+
+	idxBase := reIdx.ReplaceAllString(filepath.Base(idx), "")
+
+	d, _ := os.Open(filepath.Dir(idx))
+	files, _ := d.ReadDir(0)
+	for _, file := range files {
+		if reSub.MatchString(file.Name()) && idxBase == reSub.ReplaceAllString(file.Name(), "") {
+			subName := filepath.Join(filepath.Dir(idx), file.Name())
+			p("removing broken sub: %s", subName)
+			removeFile(subName)
+		}
+	}
+	p("removing broken sub: %s", idx)
+	removeFile(idx)
+}
 func convertTextUtf8(f string) {
 	st, e := os.Stat(f)
 	chkFatal(e)
@@ -706,11 +770,29 @@ func convertTextUtf8(f string) {
 	e = os.WriteFile(f, out, st.Mode())
 	chkFatal(e)
 }
+func removeFile(f string) {
+	// expect full path
+	dir := filepath.Dir(f)
+	if recyclePath != "" {
+		dst := strings.Replace(f, dir, recyclePath, 1)
+		p("moving file %s -> %s", f, dst)
+		e := os.MkdirAll(filepath.Dir(dst), 0777)
+		chkFatal(e)
+		e = os.Rename(f, dst)
+		chkFatal(e)
+	} else {
+		p("deleting file %s", f)
+		e := os.Remove(f)
+		chkFatal(e)
+	}
+
+}
 
 type Stream struct {
 	Index                 int `json:"index"`
 	newIndex              int
 	convert, foreignAudio bool
+	exclude               bool
 	elementaryStream      string
 	CodecName             string         `json:"codec_name"`
 	CodecType             string         `json:"codec_type"`
@@ -751,4 +833,5 @@ var (
 	rmEmptyFolders = base.RmEmptyFolders
 	printCmd       = base.PrintCmd
 	mvFile         = base.MvFile
+	fileExists     = base.FileExists
 )
