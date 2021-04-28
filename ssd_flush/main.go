@@ -1,10 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"github.com/jerblack/server_tools/base"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -42,13 +44,20 @@ var (
 	}
 	array = "/mnt/zhdd"
 
-	moveAge = 1 // hours
+	moveAge = 1  // hours
+	force   bool // for -f arg to ignore create time and just flush everything
 )
 
 func isSnapraidRunning() bool {
 	cmd := exec.Command("/usr/bin/pidof", "snapraid")
 	e := cmd.Run()
 	return e == nil
+}
+func amIRunning() bool {
+	cmd := exec.Command("/usr/bin/pidof", "ssd_flush")
+	out, _ := cmd.Output()
+	pids := strings.Split(string(out), " ")
+	return len(pids) > 1
 }
 
 func timeToMove(info os.FileInfo) bool {
@@ -64,7 +73,7 @@ func moveOldFiles() {
 		if err != nil {
 			return err
 		}
-		if timeToMove(info) {
+		if force || timeToMove(info) {
 			if info.IsDir() {
 				folders = append(folders, p)
 			} else {
@@ -101,11 +110,52 @@ func moveOldFiles() {
 	}
 }
 
+func getArgs() {
+	var e error
+	args := os.Args
+
+	if isAny("-h", args...) {
+		fmt.Println("ssd_flush\n" +
+			"  -h help\n" +
+			"  -f force, move all data regardless of age\n" +
+			"  -t <number> age in hours of data to move\n" +
+			"     default is 1 hour")
+		os.Exit(0)
+	}
+
+	if isAny("-f", args...) {
+		force = true
+	}
+
+	if setTimeArg := arrayIdx(args, "-t"); setTimeArg != -1 {
+		if force {
+			fmt.Println("cannot set -f with -t. -f is equivalent to -t 0.")
+			os.Exit(1)
+		}
+		if len(args) >= setTimeArg+2 {
+			moveAge, e = strconv.Atoi(args[setTimeArg+1])
+			if e != nil {
+				fmt.Println("must specify whole number for time in hours with -t.")
+				os.Exit(1)
+			}
+		} else {
+			fmt.Println("must specify whole number for time in hours with -t.")
+			os.Exit(1)
+		}
+	}
+
+}
+
 func main() {
 	if isSnapraidRunning() {
 		p("snapraid is running. exiting.")
 		return
 	}
+	if amIRunning() {
+		p("ssd_slush is already running. exiting.")
+		return
+	}
+	getArgs()
 	moveOldFiles()
 }
 
@@ -115,4 +165,6 @@ var (
 	chkFatal       = base.ChkFatal
 	run            = base.Run
 	rmEmptyFolders = base.RmEmptyFolders
+	isAny          = base.IsAny
+	arrayIdx       = base.ArrayIdx
 )
