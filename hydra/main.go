@@ -8,10 +8,12 @@ import (
 	"github.com/jerblack/server_tools/base"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -103,6 +105,7 @@ type Deluge struct {
 }
 
 func (d *Deluge) open() bool {
+	p("opening connection to daemon %s", d.name)
 	e := d.client.Connect()
 	if e != nil {
 		chk(e)
@@ -161,13 +164,14 @@ func (d *Deluge) getClient() {
 	})
 	d.stuckDl = make(map[string]int)
 	d.stuckSeeds = make(map[string]int)
+	d.open()
 
 }
 func (d *Deluge) checkStuckTorrents() {
-	if !d.open() {
-		return
-	}
-	defer d.close()
+	//if !d.open() {
+	//	return
+	//}
+	//defer d.close()
 
 	tors, e := d.client.TorrentsStatus(delugeclient.StateUnspecified, nil)
 	if e != nil && !strings.Contains(e.Error(), `field "ETA"`) {
@@ -197,10 +201,10 @@ func (d *Deluge) checkStuckTorrents() {
 	}
 }
 func (d *Deluge) removeFinishedTorrents() {
-	if !d.open() {
-		return
-	}
-	defer d.close()
+	//if !d.open() {
+	//	return
+	//}
+	//defer d.close()
 
 	torrents := d.getFinished()
 
@@ -218,10 +222,11 @@ func (d *Deluge) removeFinishedTorrents() {
 	rmEmptyFolders(d.doneFolder)
 }
 func (d *Deluge) linkFinishedTorrents() {
-	if !d.open() {
-		return
-	}
-	defer d.close()
+	//if !d.open() {
+	//	return
+	//}
+	//defer d.close()
+
 	torrents := d.getFinished()
 	for _, dt := range torrents {
 		p("torrent finished: %s", dt.name)
@@ -241,10 +246,10 @@ func (d *Deluge) checkFinishedTorrents() {
 
 }
 func (d *Deluge) addMagnet(magnetPath string) {
-	if !d.open() {
-		return
-	}
-	defer d.close()
+	//if !d.open() {
+	//	return
+	//}
+	//defer d.close()
 	p("adding magnet file to %s: %s", d.name, magnetPath)
 	f, e := os.ReadFile(magnetPath)
 	chkFatal(e)
@@ -492,9 +497,9 @@ func pruneTorrents() {
 		p("checking for torrents to prune")
 		for _, d := range delugeDaemons {
 			if d.keepDone {
-				if !d.open() {
-					continue
-				}
+				//if !d.open() {
+				//	continue
+				//}
 				torrents := d.getFinished()
 				for _, t := range torrents {
 					if t.seedTime > d.keepTime || t.ratio > d.keepRatio {
@@ -503,7 +508,7 @@ func pruneTorrents() {
 						chkFatal(e)
 					}
 				}
-				d.close()
+				//d.close()
 			}
 		}
 		time.Sleep(6 * time.Hour)
@@ -517,17 +522,35 @@ func main() {
 	go proc.muxConvert()
 	go pruneTorrents()
 
-	for {
-		time.Sleep(time.Duration(delugeInterval) * time.Second)
-		for _, dd := range delugeDaemons {
-			dd.checkFinishedTorrents()
-			dd.checkStuckTorrents()
+	go func() {
+		for {
+			time.Sleep(time.Duration(delugeInterval) * time.Second)
+			for _, d := range delugeDaemons {
+				d.checkFinishedTorrents()
+				d.checkStuckTorrents()
+			}
+			if !isDirEmpty(preProcFolder) {
+				proc.extractPreProc()
+				proc.muxPreProc()
+				mvTree(preProcFolder, procFolder, true)
+			}
 		}
-		if !isDirEmpty(preProcFolder) {
-			proc.extractPreProc()
-			proc.muxPreProc()
-			mvTree(preProcFolder, procFolder, true)
-		}
+	}()
+
+	signalChan := make(chan os.Signal, 1)
+
+	signal.Notify(
+		signalChan,
+		syscall.SIGHUP,  // kill -SIGHUP XXXX
+		syscall.SIGINT,  // kill -SIGINT XXXX or Ctrl+c
+		syscall.SIGQUIT, // kill -SIGQUIT XXXX
+	)
+
+	<-signalChan
+	p("exiting. doing cleanup.")
+	for _, d := range delugeDaemons {
+		p("closing connection to daemon %s", d.name)
+		d.close()
 	}
 
 }
@@ -624,10 +647,9 @@ func isUpgrade(new, old string) bool {
 }
 
 var (
-	p        = base.P
-	chk      = base.Chk
-	chkFatal = base.ChkFatal
-	//isStringVal = base.IsStringVal
+	p              = base.P
+	chk            = base.Chk
+	chkFatal       = base.ChkFatal
 	containsString = base.ContainsString
 	run            = base.Run
 	rmEmptyFolders = base.RmEmptyFolders
