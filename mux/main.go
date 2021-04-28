@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -322,60 +323,78 @@ func (m *Muxer) doJobs() {
 			fmt.Println("--------------------------------------------------")
 		}
 		p("checking remux candidate: %s", job.video)
-		if e := job.getStreams(); e != nil {
-			p("failed to get streams for file: %s", job.video)
-			p("got error: %s", e)
-			if moveProb {
-				p("FILE LIKELY CORRUPT, MOVING TO %s", probPath)
-				job.move(probPath)
-			} else {
-				p("FILE LIKELY CORRUPT, SKIPPING")
-			}
-			continue
-		}
-		job.parseStreams()
-		job.getExternalSubs()
-		//job.printStreams()
-		if job.convert && moveConvert {
-			p("-mc is set, moving file to '%s' for conversion", moveConvertPath)
-			job.move(moveConvertPath)
-		} else if job.mux {
-			job.convertStreams()
-			job.buildCmdLine()
-			job.runJob()
-		}
+		job.start()
 	}
 }
 
 type Job struct {
-	video, filename, basename, ext, baseWithPath string
-	tmpVideo, finalVideo                         string
-	subtitles, dotSubs                           []string
-	//excludedSub									 []string
-	elementaryStreams []string
-	mux, convert      bool
+	video             string   //   /x/a/b/c/file.ext
+	filename          string   //   /x/a/b/c/file.ext -> file.ext
+	basename          string   //   /x/a/b/c/file.ext -> file
+	ext               string   //   /x/a/b/c/file.ext -> .ext
+	baseWithPath      string   //   /x/a/b/c/file.ext -> /x/a/b/c/file
+	tmpVideo          string   //   /x/a/b/c/file.ext -> /x/a/b/c/file.tmp.mkv
+	finalVideo        string   //   /x/a/b/c/file.ext -> /x/a/b/c/file.mkv
+	subtitles         []string //  external subtitle files (idx, srt, ass, ssa)
+	dotSubs           []string //	companion .sub files for found .idx files
+	excludedStreams   []int    //  streams found to generate warnings and need special handling
+	elementaryStreams []string //  external elementary stream names used when converting noncompliant internal streams
+	mux               bool     //	remux required for job
+	convert           bool     //	convert required for job
 
-	Streams             []*Stream `json:"streams"`
-	vidStream           []*Stream
-	audioEng, audioForn []*Stream
-	subEng, subForced   []*Stream
-	cmdLine             []string
+	Streams   []*Stream `json:"streams"` // parsed ffprobe data from internal streams
+	vidStream []*Stream //  video stream in primary main file
+	audioEng  []*Stream //  internal english audio streams
+	audioForn []*Stream //  internal non-english audio streams
+	subEng    []*Stream //  internal subtitle streams in english or undefined language
+	subForced []*Stream //  internal subtitle streams with forced attribute set
+	cmdLine   []string
 }
 
+func (j *Job) start() {
+	if e := j.getStreams(); e != nil {
+		p("failed to get streams for file: %s", j.video)
+		p("got error: %s", e)
+		if moveProb {
+			p("FILE LIKELY CORRUPT, MOVING TO %s", probPath)
+			j.move(probPath)
+		} else {
+			p("FILE LIKELY CORRUPT, SKIPPING")
+		}
+		return
+	}
+	j.parseStreams()
+	j.getExternalSubs()
+
+	if j.convert && moveConvert {
+		p("-mc is set, moving file to '%s' for conversion", moveConvertPath)
+		j.move(moveConvertPath)
+	} else if j.mux {
+		j.convertStreams()
+		j.buildCmdLine()
+		j.runJob()
+	}
+}
 func (j *Job) getStreams() error {
-	output, e := exec.Command("ffprobe", "-v", "quiet",
-		"-print_format", "json", "-show_streams", j.video).Output()
+	j.Streams = []*Stream{}
+	output, e := exec.Command("ffprobe", "-v", "quiet", "-print_format",
+		"json", "-show_streams", j.video).Output()
 	if e != nil {
 		return e
 	}
-	e = json.Unmarshal(output, j)
-	if e != nil {
-		return e
-	}
-	return nil
+	return json.Unmarshal(output, j)
 }
 func (j *Job) parseStreams() {
+	j.vidStream = []*Stream{}
+	j.audioEng = []*Stream{}
+	j.audioForn = []*Stream{}
+	j.subEng = []*Stream{}
+	j.subForced = []*Stream{}
+
 	for n, s := range j.Streams {
+		if isAnyInt(s.Index, j.excludedStreams...) {
+			continue
+		}
 		if s.CodecType == "video" && !isAny(s.CodecName, "mjpeg", "bmp", "png") {
 			if !isAny(s.CodecName, allowedVideo...) {
 				p("convert reason, video stream is '%s' ", s.CodecName)
@@ -479,7 +498,7 @@ func (j *Job) convertStreams() {
 	}
 }
 func (j *Job) buildCmdLine() {
-	cmd := []string{"mkvmerge", "-o", j.tmpVideo}
+	cmd := []string{"mkvmerge", "--abort-on-warnings", "-o", j.tmpVideo}
 	add := func(str ...string) {
 		for _, s := range str {
 			cmd = append(cmd, s)
@@ -564,6 +583,8 @@ func (j *Job) getExternalSubs() {
 				} else if strings.HasSuffix(strings.ToLower(path), ".sub") {
 					j.dotSubs = append(j.dotSubs, path)
 				} else {
+					e := checkSortedSrt(path)
+					chkFatal(e)
 					j.subtitles = append(j.subtitles, path)
 				}
 				j.mux = true
@@ -603,16 +624,84 @@ func (j *Job) printStreams() {
 	}
 }
 
+type Warning struct {
+	filename string
+	track    int
+	warning  string
+}
+
+func runWarning(cmdLine []string) *Warning {
+	cmd := exec.Command(cmdLine[0], cmdLine[1:]...)
+	r, _ := cmd.StdoutPipe()
+	cmd.Stderr = cmd.Stdout
+	done := make(chan Warning)
+	scanner := bufio.NewScanner(r)
+	reNoTrack := regexp.MustCompile(`Warning: '(.+)': (.+)`)
+	reTrack := regexp.MustCompile(`Warning: '(.+)' track (\d+): (.+)`)
+
+	go func() {
+		var w Warning
+		for scanner.Scan() {
+			line := scanner.Text()
+			fmt.Println(line)
+			if reNoTrack.MatchString(line) {
+				matches := reNoTrack.FindStringSubmatch(line)
+				w.filename = matches[1]
+				w.warning = matches[2]
+			} else if reTrack.MatchString(line) {
+				matches := reTrack.FindStringSubmatch(line)
+				w.filename = matches[1]
+				w.track, _ = strconv.Atoi(matches[2])
+				w.warning = matches[3]
+			}
+		}
+
+		done <- w
+	}()
+	cmd.Start()
+	var w Warning
+	w = <-done
+	cmd.Wait()
+	if w.warning == "" {
+		return nil
+	} else {
+		return &w
+	}
+}
+
+func (j *Job) extractSubs() {
+	// s.codec_name =  idx -> dvd_subtitle, ass/ssa -> ass, srt -> subrip
+	exts := map[string]string{
+		"subrip": ".srt", "dvd_subtitle": ".idx", "ass": ".ssa",
+	}
+	var streams []*Stream
+	for _, stream := range j.Streams {
+		if stream.CodecType == "subtitle" {
+			stream.exclude = true
+			j.excludedStreams = append(j.excludedStreams, stream.Index)
+			ext := exts[stream.CodecName]
+			subPath := fmt.Sprintf("%s.%d%s", j.baseWithPath, stream.Index, ext)
+			cmd := exec.Command("ffmpeg", "-i", j.video, "-map", fmt.Sprintf("0:%d", stream.Index), "-c:s", "copy", subPath)
+			e := cmd.Run()
+			chk(e)
+		}
+
+		streams = append(streams, stream)
+	}
+	j.Streams = streams
+}
+
 func (j *Job) runJob() {
 	if len(j.cmdLine) == 0 {
 		return
 	}
+	var restart bool
 	printCmd(j.cmdLine)
-	err := run(j.cmdLine...)
-	chk(err)
-	if err == nil {
+	w := runWarning(j.cmdLine)
+
+	if w == nil {
 		p("removing file '%s'", j.video)
-		err = os.Remove(j.video)
+		err := os.Remove(j.video)
 		chk(err)
 		if err == nil {
 			p("renaming '%s' to '%s'", j.tmpVideo, j.finalVideo)
@@ -644,14 +733,20 @@ func (j *Job) runJob() {
 			}
 		}
 	} else {
+		if strings.Contains(w.warning, "text subtitle track contains invalid 8-bit characters") && isVideo(w.filename) {
+			p("extracting all internal subtitles")
+			j.extractSubs()
+			restart = true
+		}
+
 		p("remux failed for '%s'", j.video)
-		_, err = os.Stat(j.tmpVideo)
+		_, err := os.Stat(j.tmpVideo)
 		if !errors.Is(err, os.ErrNotExist) {
 			p("removing temp file %s", j.tmpVideo)
 			err = os.Remove(j.tmpVideo)
 			chk(err)
 		}
-		if moveProb {
+		if moveProb && !restart {
 			p("moving %s -> %s", j.video, probPath)
 			j.move(probPath)
 		}
@@ -661,7 +756,12 @@ func (j *Job) runJob() {
 		e := os.Remove(s)
 		chk(e)
 	}
-	rmEmptyFolders(startPath)
+	if restart {
+		p("encountered addressable error. restarting job.")
+		j.start()
+	} else {
+		rmEmptyFolders(startPath)
+	}
 
 }
 
@@ -682,6 +782,58 @@ func (j *Job) move(path string) {
 	rmEmptyFolders(startPath)
 }
 
+func checkSortedSrt(srt string) error {
+	ext := filepath.Ext(srt)
+	if strings.ToLower(ext) != ".srt" {
+		return nil
+	}
+	p("ensuring srt is sorted by timestamp")
+	tmp := strings.TrimSuffix(srt, ext) + ".tmp.srt"
+
+	cmd := exec.Command("mkvmerge", "-o", tmp, srt)
+	r, _ := cmd.StdoutPipe()
+	cmd.Stderr = cmd.Stdout
+	done := make(chan struct{})
+	scanner := bufio.NewScanner(r)
+	var errText string
+	var timestampProblem bool
+	re := regexp.MustCompile(`Warning: '.*': (.*)`)
+	go func() {
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.HasPrefix(line, "Warning:") {
+				warning := re.ReplaceAllString(line, "$1")
+				if strings.Contains(warning, "The start timestamp is smaller than that of the previous entry.") {
+					timestampProblem = true
+				} else {
+					errText = warning
+				}
+			}
+		}
+		done <- struct{}{}
+	}()
+	cmd.Start()
+	<-done
+	cmd.Wait()
+
+	if timestampProblem {
+		p("srt was not sorted by timestamp. fixing.")
+		e := os.Remove(srt)
+		chkFatal(e)
+		e = os.Rename(tmp, srt)
+		chkFatal(e)
+	} else {
+		e := os.Remove(tmp)
+		chkFatal(e)
+	}
+
+	if errText != "" {
+		return errors.New(errText)
+	} else {
+		return nil
+	}
+
+}
 func checkUnusableIdx(f string) error {
 	cmd := exec.Command("mkvmerge", "--abort-on-warnings", "-o", "/dev/null", f)
 	r, _ := cmd.StdoutPipe()
@@ -826,11 +978,12 @@ var (
 	p              = base.P
 	chk            = base.Chk
 	chkFatal       = base.ChkFatal
-	isAny          = base.IsAny
 	arrayIdx       = base.ArrayIdx
 	run            = base.Run
 	rmEmptyFolders = base.RmEmptyFolders
 	printCmd       = base.PrintCmd
 	mvFile         = base.MvFile
 	fileExists     = base.FileExists
+	isAny          = base.IsAny
+	isAnyInt       = base.IsAnyInt
 )

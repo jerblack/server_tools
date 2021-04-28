@@ -62,6 +62,14 @@ func IsAny(a string, b ...string) bool {
 	}
 	return false
 }
+func IsAnyInt(a int, b ...int) bool {
+	for _, _b := range b {
+		if a == _b {
+			return true
+		}
+	}
+	return false
+}
 func ContainsString(s string, subs ...string) bool {
 	for _, sub := range subs {
 		if sub != "" && strings.Contains(s, sub) {
