@@ -66,20 +66,29 @@ import (
 */
 
 var (
+	startPath        string
+	singleFile       string
+	moveConvertPath  string
+	moveFinishedPath string
+	relPath          string
+	probPath         string
+	recyclePath      = "/x/.config/_recycle"
+
+	moveConvert  bool
+	moveFinished bool
+	moveRel      bool
+	moveProb     bool
+
 	argR, argP, argF, argW bool
 
-	startPath  string
-	singleFile string
-	videoExts  = []string{
+	videoExts = []string{
 		".avi", ".divx", ".mpg", ".ts", ".wmv", ".mpeg", ".webm", ".xvid",
-		".asf", ".vob", ".mkv", ".flv", ".mp4", ".m4v", ".m2ts", ".mts"}
-	subtitleExts                                         = []string{".idx", ".sub", ".srt", ".ass", ".ssa"}
-	allowedVideo                                         = []string{"h264", "hevc", "mpeg4"}
-	allowedAudio                                         = []string{"aac", "ac3", "eac3", "flac", "alac", "dts", "mp3", "truehd"}
-	keptLangs                                            = []string{"eng", "en", "und", "mis", ""}
-	moveConvertPath, moveFinishedPath, relPath, probPath string
-	moveConvert, moveFinished, moveRel, moveProb         bool
-	recyclePath                                          = "/x/.config/_recycle"
+		".asf", ".vob", ".mkv", ".flv", ".mp4", ".m4v", ".m2ts", ".mts",
+	}
+	subtitleExts = []string{".idx", ".sub", ".srt", ".ass", ".ssa"}
+	allowedVideo = []string{"h264", "hevc", "mpeg4"}
+	allowedAudio = []string{"aac", "ac3", "eac3", "flac", "alac", "dts", "mp3", "truehd"}
+	keptLangs    = []string{"eng", "en", "und", "mis", ""}
 )
 
 func getArgs() {
@@ -335,12 +344,13 @@ type Job struct {
 	baseWithPath      string   //   /x/a/b/c/file.ext -> /x/a/b/c/file
 	tmpVideo          string   //   /x/a/b/c/file.ext -> /x/a/b/c/file.tmp.mkv
 	finalVideo        string   //   /x/a/b/c/file.ext -> /x/a/b/c/file.mkv
-	subtitles         []string //  external subtitle files (idx, srt, ass, ssa)
+	subtitles         []string //   external subtitle files (idx, srt, ass, ssa)
 	dotSubs           []string //	companion .sub files for found .idx files
-	excludedStreams   []int    //  streams found to generate warnings and need special handling
-	elementaryStreams []string //  external elementary stream names used when converting noncompliant internal streams
+	excludedStreams   []int    //   streams found to generate warnings and need special handling
+	elementaryStreams []string //   external elementary stream names used when converting non-compliant internal streams
 	mux               bool     //	remux required for job
 	convert           bool     //	convert required for job
+	restarted         bool     //   job has been restarted
 
 	Streams   []*Stream `json:"streams"` // parsed ffprobe data from internal streams
 	vidStream []*Stream //  video stream in primary main file
@@ -352,16 +362,18 @@ type Job struct {
 }
 
 func (j *Job) start() {
-	if e := j.getStreams(); e != nil {
-		p("failed to get streams for file: %s", j.video)
-		p("got error: %s", e)
-		if moveProb {
-			p("FILE LIKELY CORRUPT, MOVING TO %s", probPath)
-			j.move(probPath)
-		} else {
-			p("FILE LIKELY CORRUPT, SKIPPING")
+	if !j.restarted {
+		if e := j.getStreams(); e != nil {
+			p("failed to get streams for file: %s", j.video)
+			p("got error: %s", e)
+			if moveProb {
+				p("FILE LIKELY CORRUPT, MOVING TO %s", probPath)
+				j.move(probPath)
+			} else {
+				p("FILE LIKELY CORRUPT, SKIPPING")
+			}
+			return
 		}
-		return
 	}
 	j.parseStreams()
 	j.getExternalSubs()
@@ -505,14 +517,14 @@ func (j *Job) buildCmdLine() {
 		}
 	}
 	for _, s := range j.vidStream {
-		if s.convert {
+		if s.convert || s.exclude {
 			add(s.elementaryStream)
 		} else {
 			add("-A", "-S", "-d", fmt.Sprintf("%d", s.Index), j.video)
 		}
 	}
 	for _, s := range j.audioEng {
-		if s.convert {
+		if s.convert || s.exclude {
 			add(s.elementaryStream)
 		} else {
 			add("-S", "-D", "-a", fmt.Sprintf("%d", s.Index), j.video)
@@ -520,7 +532,7 @@ func (j *Job) buildCmdLine() {
 	}
 	if len(j.audioEng) == 0 {
 		for _, s := range j.audioForn {
-			if s.convert {
+			if s.convert || s.exclude {
 				add(s.elementaryStream)
 			} else {
 				add("-S", "-D", "-a", fmt.Sprintf("%d", s.Index), j.video)
@@ -530,17 +542,17 @@ func (j *Job) buildCmdLine() {
 
 	var subIndexes []string
 	for _, s := range j.subForced {
-		if !s.convert {
-			subIndexes = append(subIndexes, fmt.Sprintf("%d", s.Index))
-		} else {
+		if s.convert || s.exclude {
 			add(s.elementaryStream)
+		} else {
+			subIndexes = append(subIndexes, fmt.Sprintf("%d", s.Index))
 		}
 	}
 	for _, s := range j.subEng {
-		if !s.convert {
-			subIndexes = append(subIndexes, fmt.Sprintf("%d", s.Index))
-		} else {
+		if s.convert || s.exclude {
 			add(s.elementaryStream)
+		} else {
+			subIndexes = append(subIndexes, fmt.Sprintf("%d", s.Index))
 		}
 	}
 	if len(subIndexes) > 0 {
@@ -549,7 +561,6 @@ func (j *Job) buildCmdLine() {
 	add(j.subtitles...)
 	j.cmdLine = cmd
 }
-
 func (j *Job) getExternalSubs() {
 	src := strings.ToLower(j.basename)
 	walk := func(path string, info os.FileInfo, err error) error {
@@ -623,52 +634,6 @@ func (j *Job) printStreams() {
 		fmt.Println(s)
 	}
 }
-
-type Warning struct {
-	filename string
-	track    int
-	warning  string
-}
-
-func runWarning(cmdLine []string) *Warning {
-	cmd := exec.Command(cmdLine[0], cmdLine[1:]...)
-	r, _ := cmd.StdoutPipe()
-	cmd.Stderr = cmd.Stdout
-	done := make(chan Warning)
-	scanner := bufio.NewScanner(r)
-	reNoTrack := regexp.MustCompile(`Warning: '(.+)': (.+)`)
-	reTrack := regexp.MustCompile(`Warning: '(.+)' track (\d+): (.+)`)
-
-	go func() {
-		var w Warning
-		for scanner.Scan() {
-			line := scanner.Text()
-			fmt.Println(line)
-			if reNoTrack.MatchString(line) {
-				matches := reNoTrack.FindStringSubmatch(line)
-				w.filename = matches[1]
-				w.warning = matches[2]
-			} else if reTrack.MatchString(line) {
-				matches := reTrack.FindStringSubmatch(line)
-				w.filename = matches[1]
-				w.track, _ = strconv.Atoi(matches[2])
-				w.warning = matches[3]
-			}
-		}
-
-		done <- w
-	}()
-	cmd.Start()
-	var w Warning
-	w = <-done
-	cmd.Wait()
-	if w.warning == "" {
-		return nil
-	} else {
-		return &w
-	}
-}
-
 func (j *Job) extractSubs() {
 	// s.codec_name =  idx -> dvd_subtitle, ass/ssa -> ass, srt -> subrip
 	exts := map[string]string{
@@ -679,6 +644,7 @@ func (j *Job) extractSubs() {
 		if stream.CodecType == "subtitle" {
 			stream.exclude = true
 			j.excludedStreams = append(j.excludedStreams, stream.Index)
+			j.elementaryStreams = append(j.elementaryStreams, stream.elementaryStream)
 			ext := exts[stream.CodecName]
 			subPath := fmt.Sprintf("%s.%d%s", j.baseWithPath, stream.Index, ext)
 			cmd := exec.Command("ffmpeg", "-i", j.video, "-map", fmt.Sprintf("0:%d", stream.Index), "-c:s", "copy", subPath)
@@ -690,14 +656,33 @@ func (j *Job) extractSubs() {
 	}
 	j.Streams = streams
 }
-
+func (j *Job) extractAudio(recode bool) {
+	var streams []*Stream
+	for _, stream := range j.Streams {
+		if stream.CodecType == "audio" {
+			stream.elementaryStream = fmt.Sprintf("%s.%d.%s", j.baseWithPath, stream.Index, stream.CodecName)
+			j.elementaryStreams = append(j.elementaryStreams, stream.elementaryStream)
+			p("extracting audio stream %s", stream.elementaryStream)
+			codec := "copy"
+			if recode {
+				codec = stream.CodecName
+				stream.exclude = true
+			}
+			cmd := exec.Command("ffmpeg", "-fflags", "discardcorrupt", "-i", j.video, "-map",
+				fmt.Sprintf("0:%d", stream.Index), "-c:a", codec, stream.elementaryStream)
+			_ = cmd.Run()
+		}
+		streams = append(streams, stream)
+	}
+	j.Streams = streams
+}
 func (j *Job) runJob() {
 	if len(j.cmdLine) == 0 {
 		return
 	}
 	var restart bool
 	printCmd(j.cmdLine)
-	w := runWarning(j.cmdLine)
+	w := runWarning(j.cmdLine, true)
 
 	if w == nil {
 		p("removing file '%s'", j.video)
@@ -733,9 +718,16 @@ func (j *Job) runJob() {
 			}
 		}
 	} else {
-		if strings.Contains(w.warning, "text subtitle track contains invalid 8-bit characters") && isVideo(w.filename) {
+		invalidChars := "text subtitle track contains invalid 8-bit characters"
+		if strings.Contains(w.warning, invalidChars) && isVideo(w.filename) {
 			p("extracting all internal subtitles")
 			j.extractSubs()
+			restart = true
+		}
+
+		audioInvalidData := regexp.MustCompile(`audio track contains \d+ bytes of invalid data`)
+		if audioInvalidData.MatchString(w.warning) && isVideo(w.filename) {
+			j.extractAudio(true)
 			restart = true
 		}
 
@@ -751,20 +743,21 @@ func (j *Job) runJob() {
 			j.move(probPath)
 		}
 	}
-	for _, s := range j.elementaryStreams {
-		p("removing temporary elementary stream: %s", s)
-		e := os.Remove(s)
-		chk(e)
-	}
+
 	if restart {
 		p("encountered addressable error. restarting job.")
+		j.restarted = true
 		j.start()
 	} else {
+		for _, s := range j.elementaryStreams {
+			p("removing temporary elementary stream: %s", s)
+			e := os.Remove(s)
+			chk(e)
+		}
 		rmEmptyFolders(startPath)
 	}
 
 }
-
 func (j *Job) move(path string) {
 	files := append(j.subtitles, j.video)
 	files = append(files, j.dotSubs...)
@@ -812,9 +805,9 @@ func checkSortedSrt(srt string) error {
 		}
 		done <- struct{}{}
 	}()
-	cmd.Start()
+	_ = cmd.Start()
 	<-done
-	cmd.Wait()
+	_ = cmd.Wait()
 
 	if timestampProblem {
 		p("srt was not sorted by timestamp. fixing.")
@@ -854,9 +847,9 @@ func checkUnusableIdx(f string) error {
 		}
 		done <- struct{}{}
 	}()
-	cmd.Start()
+	_ = cmd.Start()
 	<-done
-	cmd.Wait()
+	_ = cmd.Wait()
 	if errText != "" {
 		return errors.New(errText)
 	} else {
@@ -943,6 +936,7 @@ type Stream struct {
 	Index                 int `json:"index"`
 	newIndex              int
 	convert, foreignAudio bool
+	recoded               bool
 	exclude               bool
 	elementaryStream      string
 	CodecName             string         `json:"codec_name"`
@@ -987,3 +981,50 @@ var (
 	isAny          = base.IsAny
 	isAnyInt       = base.IsAnyInt
 )
+
+type Warning struct {
+	filename string
+	track    int
+	warning  string
+}
+
+func runWarning(cmdLine []string, showStdout bool) *Warning {
+	cmd := exec.Command(cmdLine[0], cmdLine[1:]...)
+	r, _ := cmd.StdoutPipe()
+	cmd.Stderr = cmd.Stdout
+	done := make(chan Warning)
+	scanner := bufio.NewScanner(r)
+	reNoTrack := regexp.MustCompile(`Warning: '(.+)': (.+)`)
+	reTrack := regexp.MustCompile(`Warning: '(.+)' track (\d+): (.+)`)
+
+	go func() {
+		var w Warning
+		for scanner.Scan() {
+			line := scanner.Text()
+			if showStdout {
+				fmt.Println(line)
+			}
+			if reNoTrack.MatchString(line) {
+				matches := reNoTrack.FindStringSubmatch(line)
+				w.filename = matches[1]
+				w.warning = matches[2]
+			} else if reTrack.MatchString(line) {
+				matches := reTrack.FindStringSubmatch(line)
+				w.filename = matches[1]
+				w.track, _ = strconv.Atoi(matches[2])
+				w.warning = matches[3]
+			}
+		}
+
+		done <- w
+	}()
+	_ = cmd.Start()
+	var w Warning
+	w = <-done
+	_ = cmd.Wait()
+	if w.warning == "" {
+		return nil
+	} else {
+		return &w
+	}
+}
