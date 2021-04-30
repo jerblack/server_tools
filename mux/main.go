@@ -523,38 +523,23 @@ func (j *Job) buildCmdLine() {
 			add("-A", "-S", "-d", fmt.Sprintf("%d", s.Index), j.video)
 		}
 	}
-	for _, s := range j.audioEng {
+	for _, s := range append(j.audioEng, j.audioForn...) {
 		if s.convert || s.exclude {
 			add(s.elementaryStream)
 		} else {
 			add("-S", "-D", "-a", fmt.Sprintf("%d", s.Index), j.video)
 		}
 	}
-	if len(j.audioEng) == 0 {
-		for _, s := range j.audioForn {
-			if s.convert || s.exclude {
-				add(s.elementaryStream)
-			} else {
-				add("-S", "-D", "-a", fmt.Sprintf("%d", s.Index), j.video)
-			}
+
+	var subIndexes []string
+	for _, s := range append(j.subForced, j.subEng...) {
+		if s.convert || s.exclude {
+			add(s.elementaryStream)
+		} else {
+			subIndexes = append(subIndexes, fmt.Sprintf("%d", s.Index))
 		}
 	}
 
-	var subIndexes []string
-	for _, s := range j.subForced {
-		if s.convert || s.exclude {
-			add(s.elementaryStream)
-		} else {
-			subIndexes = append(subIndexes, fmt.Sprintf("%d", s.Index))
-		}
-	}
-	for _, s := range j.subEng {
-		if s.convert || s.exclude {
-			add(s.elementaryStream)
-		} else {
-			subIndexes = append(subIndexes, fmt.Sprintf("%d", s.Index))
-		}
-	}
 	if len(subIndexes) > 0 {
 		add("-D", "-A", "-s", strings.Join(subIndexes, ","), j.video)
 	}
@@ -644,7 +629,7 @@ func (j *Job) extractSubs() {
 		if stream.CodecType == "subtitle" {
 			stream.exclude = true
 			j.excludedStreams = append(j.excludedStreams, stream.Index)
-			j.elementaryStreams = append(j.elementaryStreams, stream.elementaryStream)
+			//j.elementaryStreams = append(j.elementaryStreams, stream.elementaryStream)
 			ext := exts[stream.CodecName]
 			subPath := fmt.Sprintf("%s.%d%s", j.baseWithPath, stream.Index, ext)
 			cmd := exec.Command("ffmpeg", "-i", j.video, "-map", fmt.Sprintf("0:%d", stream.Index), "-c:s", "copy", subPath)
