@@ -18,14 +18,14 @@ import (
 )
 
 /*
-	remux all files into mkv with h264 video and ac3 audio with external subtitles embedded as mkv streams
+	remux all files into mkv with h264 video and ac3 audio with external subExternal embedded as mkv streams
 		requires: ffmpeg ffprobe mkvtoolnix
 		remux reasons
 			non-mkv container
-			external subtitles
+			external subExternal
 			video stream not first strewm
 			english audio not first audio stream (unless no english audio present)
-			english subtitles not first subtitle stream (unless no english subs present)
+			english subExternal not first subtitle stream (unless no english subs present)
 		convert reason - audio
 			not "aac", "ac3", "eac3", "flac", "alac", "dts", "mp3", "truehd"
 		convert reason - video
@@ -85,10 +85,10 @@ var (
 		".avi", ".divx", ".mpg", ".ts", ".wmv", ".mpeg", ".webm", ".xvid",
 		".asf", ".vob", ".mkv", ".flv", ".mp4", ".m4v", ".m2ts", ".mts",
 	}
-	subtitleExts = []string{".idx", ".sub", ".srt", ".ass", ".ssa"}
+	subtitleExts = []string{".idx", ".srt", ".ass", ".ssa"}
 	allowedVideo = []string{"h264", "hevc", "mpeg4"}
 	allowedAudio = []string{"aac", "ac3", "eac3", "flac", "alac", "dts", "mp3", "truehd"}
-	keptLangs    = []string{"eng", "en", "und", "mis", ""}
+	engLangs     = []string{"eng", "en", "und", "mis", ""}
 )
 
 func getArgs() {
@@ -271,13 +271,6 @@ func (m *Muxer) start() {
 	m.jobs = []*Job{}
 	m.getJobs()
 	m.doJobs()
-	//if moveFinished {
-	//	emp, _ := isDirEmpty(startPath)
-	//	if !emp {
-	//		p("finished, moving files from '%s' to '%s'", startPath, moveFinishedPath)
-	//		mvTree(startPath, moveFinishedPath, true)
-	//	}
-	//}
 }
 func (m *Muxer) getJobs() {
 	makeJob := func(vid string) {
@@ -337,33 +330,33 @@ func (m *Muxer) doJobs() {
 }
 
 type Job struct {
-	video             string   //   /x/a/b/c/file.ext
-	filename          string   //   /x/a/b/c/file.ext -> file.ext
-	basename          string   //   /x/a/b/c/file.ext -> file
-	ext               string   //   /x/a/b/c/file.ext -> .ext
-	baseWithPath      string   //   /x/a/b/c/file.ext -> /x/a/b/c/file
-	tmpVideo          string   //   /x/a/b/c/file.ext -> /x/a/b/c/file.tmp.mkv
-	finalVideo        string   //   /x/a/b/c/file.ext -> /x/a/b/c/file.mkv
-	subtitles         []string //   external subtitle files (idx, srt, ass, ssa)
-	dotSubs           []string //	companion .sub files for found .idx files
-	excludedStreams   []int    //   streams found to generate warnings and need special handling
-	elementaryStreams []string //   external elementary stream names used when converting non-compliant internal streams
-	mux               bool     //	remux required for job
-	convert           bool     //	convert required for job
-	restarted         bool     //   job has been restarted
+	video        string //   /x/a/b/c/file.ext
+	filename     string //   /x/a/b/c/file.ext -> file.ext
+	basename     string //   /x/a/b/c/file.ext -> file
+	ext          string //   /x/a/b/c/file.ext -> .ext
+	baseWithPath string //   /x/a/b/c/file.ext -> /x/a/b/c/file
+	tmpVideo     string //   /x/a/b/c/file.ext -> /x/a/b/c/file.tmp.mkv
+	finalVideo   string //   /x/a/b/c/file.ext -> /x/a/b/c/file.mkv
+	mux          bool   //	remux required for job
+	convert      bool   //	convert required for job
+	restarted    bool   //   job has been restarted
 
-	Streams   []*Stream `json:"streams"` // parsed ffprobe data from internal streams
-	vidStream []*Stream //  video stream in primary main file
-	audioEng  []*Stream //  internal english audio streams
-	audioForn []*Stream //  internal non-english audio streams
-	subEng    []*Stream //  internal subtitle streams in english or undefined language
-	subForced []*Stream //  internal subtitle streams with forced attribute set
-	cmdLine   []string
+	streams       []*Stream //	 all streams found for job, internal and external
+	vidStream     []*Stream //  video stream in primary main file
+	audioEng      []*Stream //  internal english audio streams
+	audioForn     []*Stream //  internal non-english audio streams
+	subEng        []*Stream //  internal subtitle streams in english or undefined language
+	subEngForced  []*Stream //  internal subtitle streams with forced attribute set
+	subForn       []*Stream //  internal subtitle stream, not english or undefined
+	subFornForced []*Stream //  internal subtitle stream, not english or undefined
+
+	cmdLine []string
 }
 
 func (j *Job) start() {
+	var e error
 	if !j.restarted {
-		if e := j.getStreams(); e != nil {
+		if e, j.streams = j.getStreams(j.video); e != nil {
 			p("failed to get streams for file: %s", j.video)
 			p("got error: %s", e)
 			if moveProb {
@@ -374,9 +367,11 @@ func (j *Job) start() {
 			}
 			return
 		}
+		j.streams = append(j.streams, j.findExternalSubs()...)
 	}
+
 	j.parseStreams()
-	j.getExternalSubs()
+	j.printStreams()
 
 	if j.convert && moveConvert {
 		p("-mc is set, moving file to '%s' for conversion", moveConvertPath)
@@ -387,26 +382,104 @@ func (j *Job) start() {
 		j.runJob()
 	}
 }
-func (j *Job) getStreams() error {
-	j.Streams = []*Stream{}
-	output, e := exec.Command("ffprobe", "-v", "quiet", "-print_format",
-		"json", "-show_streams", j.video).Output()
-	if e != nil {
-		return e
+
+func (j *Job) findExternalSubs() []*Stream {
+	src := strings.ToLower(j.basename)
+	reIdx := regexp.MustCompile(`(?i).idx$`)
+	reSrt := regexp.MustCompile(`(?i).srt$`)
+	var subStreams []*Stream
+
+	walk := func(path string, info os.FileInfo, err error) error {
+		if !fileExists(path) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && isSub(path) {
+			subFname := filepath.Base(strings.ToLower(path))
+			if strings.HasPrefix(subFname, src) {
+				p("found sub: %s", path)
+				p("ensuring external subtitle text encoding is UTF-8")
+				convertTextUtf8(path)
+
+				var subFile string
+				if reIdx.MatchString(path) {
+					p("ensuring idx has language id set")
+					if !checkIdxNoId(path) {
+						p("idx failed verification")
+						removeIdxSub(path)
+						return nil
+					}
+					p("running idx warning checks")
+					e := checkUnusableIdx(path)
+					if e != nil {
+						p("idx failed validation with error: %s", e.Error())
+						removeIdxSub(path)
+						return nil
+					}
+					e, subFile = findIdxSub(path)
+					if e != nil {
+						p("no matching sub file found for idx: %s", path)
+						return nil
+					}
+				}
+				if reSrt.MatchString(path) {
+					e := checkSortedSrt(path)
+					chkFatal(e)
+				}
+
+				e, streams := j.getStreams(path)
+				if e != nil {
+					p("could not get streams from subtitle file: %s", path)
+					return nil
+				}
+				s := ""
+				if len(streams) != 1 {
+					s = "s"
+				}
+				p("found %d stream%s in %s", len(streams), s, path)
+
+				for _, stream := range streams {
+					stream.elementaryStream = path
+					stream.subFile = subFile
+					subStreams = append(subStreams, stream)
+				}
+
+				j.mux = true
+			}
+		}
+		return nil
 	}
-	return json.Unmarshal(output, j)
+	d := filepath.Dir(j.video)
+	err := filepath.Walk(d, walk)
+	chkFatal(err)
+	return subStreams
+}
+
+func (j *Job) getStreams(path string) (error, []*Stream) {
+	var ffStreams FfprobeStreams
+	cmd := exec.Command("ffprobe", "-v", "quiet", "-print_format", "json", "-show_streams", path)
+	output, e := cmd.Output()
+	if e != nil {
+		return e, []*Stream{}
+	}
+	e = json.Unmarshal(output, &ffStreams)
+	var streams []*Stream
+	for n, _ := range ffStreams.Streams {
+		streams = append(streams, &ffStreams.Streams[n])
+	}
+	return nil, streams
 }
 func (j *Job) parseStreams() {
 	j.vidStream = []*Stream{}
 	j.audioEng = []*Stream{}
 	j.audioForn = []*Stream{}
 	j.subEng = []*Stream{}
-	j.subForced = []*Stream{}
+	j.subEngForced = []*Stream{}
+	j.subForn = []*Stream{}
 
-	for n, s := range j.Streams {
-		if isAnyInt(s.Index, j.excludedStreams...) {
-			continue
-		}
+	for n, s := range j.streams {
 		if s.CodecType == "video" && !isAny(s.CodecName, "mjpeg", "bmp", "png") {
 			if !isAny(s.CodecName, allowedVideo...) {
 				p("convert reason, video stream is '%s' ", s.CodecName)
@@ -425,50 +498,49 @@ func (j *Job) parseStreams() {
 				s.elementaryStream = fmt.Sprintf("%s.%d.ac3", j.baseWithPath, n)
 				j.mux = true
 			}
-			if isAny(s.Tags.Language, keptLangs...) {
+			if isAny(s.Tags.Language, engLangs...) {
 				j.audioEng = append(j.audioEng, s)
 			} else {
-				s.foreignAudio = true
 				j.audioForn = append(j.audioForn, s)
 			}
 		}
 		if s.CodecType == "subtitle" {
-			if isAny(s.Tags.Language, keptLangs...) {
-				if s.CodecName == "mov_text" {
-					p("convert reason, subtitle stream is '%s' ", s.CodecName)
-					s.convert = true
-					j.convert = true
-					s.elementaryStream = fmt.Sprintf("%s.%d.srt", j.baseWithPath, n)
-					j.mux = true
-				}
+			if s.CodecName == "mov_text" {
+				p("convert reason, subtitle stream is '%s' ", s.CodecName)
+				s.convert = true
+				j.convert = true
+				s.elementaryStream = fmt.Sprintf("%s.%d.srt", j.baseWithPath, n)
+				j.mux = true
+			}
+			if isAny(s.Tags.Language, engLangs...) {
 				if s.Disposition.Forced == 1 {
-					j.subForced = append(j.subForced, s)
+					j.subEngForced = append(j.subEngForced, s)
 				} else {
 					j.subEng = append(j.subEng, s)
+				}
+			} else {
+				if s.Disposition.Forced == 1 {
+					j.subFornForced = append(j.subFornForced, s)
+				} else {
+					j.subForn = append(j.subForn, s)
 				}
 			}
 		}
 	}
-	offset := len(j.vidStream)
-	for n, aud := range j.audioEng {
-		aud.newIndex = offset + n
-		if aud.Index == 0 {
-			p("remux reason, video was not first stream")
-			j.mux = true
-		} else if aud.newIndex != aud.Index {
-			p("remux reason, english audio was not first: move stream %d to %d", aud.Index, aud.newIndex)
+
+	var allStreams []*Stream
+	for _, streams := range [][]*Stream{j.vidStream, j.audioEng, j.audioForn, j.subEngForced, j.subEng, j.subFornForced, j.subForn} {
+		allStreams = append(allStreams, streams...)
+	}
+
+	for n, stream := range allStreams {
+		if stream.Index != n {
+			p("remux reason, %s stream moved from index %d to %d.",
+				stream.CodecType, stream.Index, n)
 			j.mux = true
 		}
 	}
 
-	offset = offset + len(j.audioEng)
-	for n, aud := range j.audioForn {
-		aud.newIndex = offset + n
-		if aud.newIndex != aud.Index && len(j.audioEng) == 0 {
-			p("remux reason, audio order changed: move stream %d to %d", aud.Index, aud.newIndex)
-			j.mux = true
-		}
-	}
 }
 func (j *Job) convertStreams() {
 	var cmd []string
@@ -477,24 +549,21 @@ func (j *Job) convertStreams() {
 			cmd = append(cmd, s)
 		}
 	}
-	for _, s := range j.Streams {
+	for _, s := range j.streams {
 		if s.convert {
-			cmd = []string{"ffmpeg", "-hide_banner", "-loglevel", "warning", "-stats", "-y", "-i", j.video, "-map", fmt.Sprintf("0:%d", s.Index)}
+			cmd = []string{"ffmpeg", "-hide_banner", "-loglevel", "warning", "-stats", "-y",
+				"-i", j.video, "-map", fmt.Sprintf("0:%d", s.Index)}
 
 			if s.CodecType == "video" {
 				if !isAny(s.FieldOrder, "progressive", "unknown", "") {
 					add("-vf", "yadif")
 				}
-				add("-c:v", "h264", "-preset", "slow", "-crf", "17", "-movflags", "+faststart", "-pix_fmt", "yuv420p", s.elementaryStream)
+				add("-c:v", "h264", "-preset", "slow", "-crf", "17", "-movflags", "+faststart", "-pix_fmt",
+					"yuv420p", s.elementaryStream)
 			}
 			if s.CodecType == "audio" {
-				add("-c:a", "ac3", s.elementaryStream)
+				add("-c:a", "eac3", s.elementaryStream)
 			}
-			if s.foreignAudio && len(j.audioEng) > 0 {
-				s.convert = false
-				continue
-			}
-
 			if s.CodecType == "subtitle" {
 				if s.CodecName == "mov_text" {
 					add("-c:s", "text", s.elementaryStream)
@@ -502,7 +571,6 @@ func (j *Job) convertStreams() {
 			}
 
 			p("creating elementary stream: %s", s.elementaryStream)
-			j.elementaryStreams = append(j.elementaryStreams, s.elementaryStream)
 			printCmd(cmd)
 			err := run(cmd...)
 			chkFatal(err)
@@ -517,83 +585,43 @@ func (j *Job) buildCmdLine() {
 		}
 	}
 	for _, s := range j.vidStream {
-		if s.convert || s.exclude {
+		if s.elementaryStream != "" {
 			add(s.elementaryStream)
 		} else {
 			add("-A", "-S", "-d", fmt.Sprintf("%d", s.Index), j.video)
 		}
 	}
-	for _, s := range append(j.audioEng, j.audioForn...) {
-		if s.convert || s.exclude {
-			add(s.elementaryStream)
+
+	allAudio := append(j.audioEng, j.audioForn...)
+	for _, s := range allAudio {
+		if s.elementaryStream != "" {
+			if s.Tags.Language == "" {
+				add(s.elementaryStream)
+			} else {
+				add("--language", fmt.Sprintf("0:%s", s.Tags.Language), s.elementaryStream)
+			}
 		} else {
 			add("-S", "-D", "-a", fmt.Sprintf("%d", s.Index), j.video)
 		}
 	}
 
-	var subIndexes []string
-	for _, s := range append(j.subForced, j.subEng...) {
-		if s.convert || s.exclude {
-			add(s.elementaryStream)
+	allSubs := append(j.subEngForced, j.subEng...)
+	allSubs = append(allSubs, j.subForn...)
+	for _, s := range allSubs {
+		if s.elementaryStream != "" {
+			if s.Tags.Language == "" {
+				add(s.elementaryStream)
+			} else {
+				add("--language", fmt.Sprintf("0:%s", s.Tags.Language), s.elementaryStream)
+			}
 		} else {
-			subIndexes = append(subIndexes, fmt.Sprintf("%d", s.Index))
+			add("-D", "-A", "-s", fmt.Sprintf("%d", s.Index), j.video)
 		}
 	}
-
-	if len(subIndexes) > 0 {
-		add("-D", "-A", "-s", strings.Join(subIndexes, ","), j.video)
-	}
-	add(j.subtitles...)
 	j.cmdLine = cmd
 }
-func (j *Job) getExternalSubs() {
-	src := strings.ToLower(j.basename)
-	walk := func(path string, info os.FileInfo, err error) error {
-		if !fileExists(path) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() && isSub(path) {
-			subFname := filepath.Base(strings.ToLower(path))
-			if strings.HasPrefix(subFname, src) {
-				p("found sub: %s", path)
-				p("ensuring external subtitle text encoding is UTF-8")
-				convertTextUtf8(path)
-				if strings.HasSuffix(strings.ToLower(path), ".idx") {
-					p("ensuring idx has language id set")
-					if !checkIdxNoId(path) {
-						p("idx failed verification")
-						removeIdxSub(path)
-						return nil
-					}
-					p("Running idx warning checks")
-					e := checkUnusableIdx(path)
-					if e != nil {
-						p("idx failed validation with error: %s", e.Error())
-						removeIdxSub(path)
-						return nil
-					}
-					j.subtitles = append(j.subtitles, path)
-				} else if strings.HasSuffix(strings.ToLower(path), ".sub") {
-					j.dotSubs = append(j.dotSubs, path)
-				} else {
-					e := checkSortedSrt(path)
-					chkFatal(e)
-					j.subtitles = append(j.subtitles, path)
-				}
-				j.mux = true
-			}
-		}
-		return nil
-	}
-	d := filepath.Dir(j.video)
-	err := filepath.Walk(d, walk)
-	chkFatal(err)
-
-}
 func (j *Job) printStreams() {
+	p("/////////////////////////")
 	p("vidStream")
 	for _, s := range j.vidStream {
 		fmt.Printf("%+v\n", s)
@@ -606,60 +634,57 @@ func (j *Job) printStreams() {
 	for _, s := range j.audioForn {
 		fmt.Printf("%+v\n", s)
 	}
-	p("subForced")
-	for _, s := range j.subForced {
+	p("subEngForced")
+	for _, s := range j.subEngForced {
 		fmt.Printf("%+v\n", s)
 	}
 	p("subEng")
 	for _, s := range j.subEng {
 		fmt.Printf("%+v\n", s)
 	}
-	p("subtitles")
-	for _, s := range j.subtitles {
-		fmt.Println(s)
+	p("subFornForced")
+	for _, s := range j.subFornForced {
+		fmt.Printf("%+v\n", s)
 	}
+	p("subForn")
+	for _, s := range j.subForn {
+		fmt.Printf("%+v\n", s)
+	}
+	p(`\\\\\\\\\\\\\\\\\\\\\\\\\`)
 }
 func (j *Job) extractSubs() {
 	// s.codec_name =  idx -> dvd_subtitle, ass/ssa -> ass, srt -> subrip
 	exts := map[string]string{
 		"subrip": ".srt", "dvd_subtitle": ".idx", "ass": ".ssa",
 	}
-	var streams []*Stream
-	for _, stream := range j.Streams {
-		if stream.CodecType == "subtitle" {
-			stream.exclude = true
-			j.excludedStreams = append(j.excludedStreams, stream.Index)
-			//j.elementaryStreams = append(j.elementaryStreams, stream.elementaryStream)
+	for _, stream := range j.streams {
+		if stream.CodecType == "subtitle" && stream.elementaryStream == "" {
 			ext := exts[stream.CodecName]
-			subPath := fmt.Sprintf("%s.%d%s", j.baseWithPath, stream.Index, ext)
-			cmd := exec.Command("ffmpeg", "-i", j.video, "-map", fmt.Sprintf("0:%d", stream.Index), "-c:s", "copy", subPath)
+			stream.elementaryStream = fmt.Sprintf("%s.%d%s", j.baseWithPath, stream.Index, ext)
+			cmd := exec.Command("ffmpeg", "-i", j.video, "-map", fmt.Sprintf("0:%d", stream.Index),
+				"-c:s", "copy", stream.elementaryStream)
 			e := cmd.Run()
 			chk(e)
 		}
-
-		streams = append(streams, stream)
 	}
-	j.Streams = streams
 }
 func (j *Job) extractAudio(recode bool) {
-	var streams []*Stream
-	for _, stream := range j.Streams {
+	for _, stream := range j.streams {
 		if stream.CodecType == "audio" {
 			stream.elementaryStream = fmt.Sprintf("%s.%d.%s", j.baseWithPath, stream.Index, stream.CodecName)
-			j.elementaryStreams = append(j.elementaryStreams, stream.elementaryStream)
 			p("extracting audio stream %s", stream.elementaryStream)
 			codec := "copy"
 			if recode {
 				codec = stream.CodecName
-				stream.exclude = true
 			}
-			cmd := exec.Command("ffmpeg", "-fflags", "discardcorrupt", "-i", j.video, "-map",
-				fmt.Sprintf("0:%d", stream.Index), "-c:a", codec, stream.elementaryStream)
+			args := []string{"-fflags", "discardcorrupt", "-i", j.video, "-map",
+				fmt.Sprintf("0:%d", stream.Index), "-c:a", codec}
+			args = append(args, stream.elementaryStream)
+			fmt.Println(strings.Join(args, " "))
+			cmd := exec.Command("ffmpeg", args...)
 			_ = cmd.Run()
 		}
-		streams = append(streams, stream)
 	}
-	j.Streams = streams
 }
 func (j *Job) runJob() {
 	if len(j.cmdLine) == 0 {
@@ -688,16 +713,16 @@ func (j *Job) runJob() {
 					err = mvFile(j.finalVideo, dst)
 					chk(err)
 				}
-
-				for _, s := range j.subtitles {
-					p("removing subtitle file '%s'", s)
-					err = os.Remove(s)
-					chk(err)
-					if strings.HasSuffix(s, ".idx") {
-						s = strings.TrimSuffix(s, ".idx") + ".sub"
-						p("removing subtitle file '%s'", s)
-						err = os.Remove(s)
-						chk(err)
+				for _, s := range j.streams {
+					if s.elementaryStream != "" {
+						p("removing temporary elementary stream: %s", s.elementaryStream)
+						e := os.Remove(s.elementaryStream)
+						chk(e)
+					}
+					if s.subFile != "" {
+						p("removing temporary elementary stream: %s", s.subFile)
+						e := os.Remove(s.subFile)
+						chk(e)
 					}
 				}
 			}
@@ -705,7 +730,7 @@ func (j *Job) runJob() {
 	} else {
 		invalidChars := "text subtitle track contains invalid 8-bit characters"
 		if strings.Contains(w.warning, invalidChars) && isVideo(w.filename) {
-			p("extracting all internal subtitles")
+			p("extracting all internal subExternal")
 			j.extractSubs()
 			restart = true
 		}
@@ -734,18 +759,15 @@ func (j *Job) runJob() {
 		j.restarted = true
 		j.start()
 	} else {
-		for _, s := range j.elementaryStreams {
-			p("removing temporary elementary stream: %s", s)
-			e := os.Remove(s)
-			chk(e)
-		}
 		rmEmptyFolders(startPath)
 	}
 
 }
 func (j *Job) move(path string) {
-	files := append(j.subtitles, j.video)
-	files = append(files, j.dotSubs...)
+	files := []string{j.video}
+	for _, s := range j.streams {
+		files = append(files, s.elementaryStream)
+	}
 	for _, f := range files {
 		var newPath string
 		if moveRel {
@@ -869,21 +891,27 @@ func checkIdxNoId(f string) bool {
 	}
 	return true
 }
-func removeIdxSub(idx string) {
-	// find and delete companion sub
+func findIdxSub(idx string) (error, string) {
+	// find companion sub for idx file
 	reIdx := regexp.MustCompile(`(?i)(.idx$)`)
 	reSub := regexp.MustCompile(`(?i)(.sub$)`)
-
 	idxBase := reIdx.ReplaceAllString(filepath.Base(idx), "")
-
 	d, _ := os.Open(filepath.Dir(idx))
+	defer d.Close()
 	files, _ := d.ReadDir(0)
 	for _, file := range files {
 		if reSub.MatchString(file.Name()) && idxBase == reSub.ReplaceAllString(file.Name(), "") {
 			subName := filepath.Join(filepath.Dir(idx), file.Name())
-			p("removing broken sub: %s", subName)
-			removeFile(subName)
+			return nil, subName
 		}
+	}
+	return errors.New(".sub file not found"), ""
+}
+func removeIdxSub(idx string) {
+	e, sub := findIdxSub(idx)
+	if e != nil {
+		p("removing broken sub: %s", sub)
+		removeFile(sub)
 	}
 	p("removing broken sub: %s", idx)
 	removeFile(idx)
@@ -900,7 +928,7 @@ func convertTextUtf8(f string) {
 	chkFatal(e)
 }
 func removeFile(f string) {
-	// expect full path
+	// expects full path
 	dir := filepath.Dir(f)
 	if recyclePath != "" {
 		dst := strings.Replace(f, dir, recyclePath, 1)
@@ -917,30 +945,28 @@ func removeFile(f string) {
 
 }
 
+type FfprobeStreams struct {
+	Streams []Stream `json:"streams"`
+}
 type Stream struct {
-	Index                 int `json:"index"`
-	newIndex              int
-	convert, foreignAudio bool
-	recoded               bool
-	exclude               bool
-	elementaryStream      string
-	CodecName             string         `json:"codec_name"`
-	CodecType             string         `json:"codec_type"`
-	FieldOrder            string         `json:"field_order"`
-	Disposition           DispositionMap `json:"disposition"`
-	Tags                  TagsMap        `json:"tags"`
-}
-type DispositionMap struct {
-	Default int `json:"default"`
-	Forced  int `json:"forced"`
-}
-type TagsMap struct {
-	Language string `json:"language"`
+	Index            int `json:"index"`
+	convert          bool
+	subFile          string
+	elementaryStream string
+	CodecName        string `json:"codec_name"`
+	CodecType        string `json:"codec_type"`
+	FieldOrder       string `json:"field_order"`
+	Disposition      struct {
+		Default int `json:"default"`
+		Forced  int `json:"forced"`
+	} `json:"disposition"`
+	Tags struct {
+		Language string `json:"language"`
+	} `json:"tags"`
 }
 
 func main() {
 	getArgs()
-	//viewArgs()
 	var m Muxer
 	if argW {
 		p("starting watcher. scanning for new files every 60 seconds")
@@ -964,7 +990,6 @@ var (
 	mvFile         = base.MvFile
 	fileExists     = base.FileExists
 	isAny          = base.IsAny
-	isAnyInt       = base.IsAnyInt
 )
 
 type Warning struct {

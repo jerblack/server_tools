@@ -117,8 +117,21 @@ func (d *Deluge) close() {
 	e := d.client.Close()
 	chk(e)
 }
+func (d *Deluge) verifyOpen() bool {
+	_, e := d.client.DaemonVersion()
+	if e != nil {
+		chk(e)
+		d.close()
+		return d.open()
+	}
+	return true
+}
+
 func (d *Deluge) getFinished() []DelugeTorrent {
 	var torrents []DelugeTorrent
+	if !d.verifyOpen() {
+		return torrents
+	}
 	tors, e := d.client.TorrentsStatus(delugeclient.StateUnspecified, nil)
 	if e != nil && !strings.Contains(e.Error(), `field "ETA"`) {
 		chk(e)
@@ -172,6 +185,9 @@ func (d *Deluge) checkStuckTorrents() {
 	//	return
 	//}
 	//defer d.close()
+	if !d.verifyOpen() {
+		return
+	}
 
 	tors, e := d.client.TorrentsStatus(delugeclient.StateUnspecified, nil)
 	if e != nil && !strings.Contains(e.Error(), `field "ETA"`) {
@@ -205,7 +221,9 @@ func (d *Deluge) removeFinishedTorrents() {
 	//	return
 	//}
 	//defer d.close()
-
+	if !d.verifyOpen() {
+		return
+	}
 	torrents := d.getFinished()
 
 	for _, dt := range torrents {
@@ -226,7 +244,9 @@ func (d *Deluge) linkFinishedTorrents() {
 	//	return
 	//}
 	//defer d.close()
-
+	if !d.verifyOpen() {
+		return
+	}
 	torrents := d.getFinished()
 	for _, dt := range torrents {
 		p("torrent finished: %s", dt.name)
@@ -250,6 +270,9 @@ func (d *Deluge) addMagnet(magnetPath string) {
 	//	return
 	//}
 	//defer d.close()
+	if !d.verifyOpen() {
+		return
+	}
 	p("adding magnet file to %s: %s", d.name, magnetPath)
 	f, e := os.ReadFile(magnetPath)
 	chkFatal(e)
@@ -263,10 +286,13 @@ func (d *Deluge) addMagnet(magnetPath string) {
 	chkFatal(e)
 }
 func (d *Deluge) addTorrent(torrentPath string) {
-	if !d.open() {
+	//if !d.open() {
+	//	return
+	//}
+	//defer d.close()
+	if !d.verifyOpen() {
 		return
 	}
-	defer d.close()
 	p("adding torrent file to %s: %s", d.name, torrentPath)
 	t, e := os.ReadFile(torrentPath)
 	chkFatal(e)
@@ -500,6 +526,9 @@ func pruneTorrents() {
 				//if !d.open() {
 				//	continue
 				//}
+				if !d.verifyOpen() {
+					continue
+				}
 				torrents := d.getFinished()
 				for _, t := range torrents {
 					if t.seedTime > d.keepTime || t.ratio > d.keepRatio {
