@@ -534,7 +534,10 @@ func (j *Job) parseStreams() {
 	}
 
 	for n, stream := range allStreams {
-		if stream.Index != n {
+		if stream.elementaryStream != "" {
+			p("remux reason, stream(s) in external file: %s", stream.elementaryStream)
+			j.mux = true
+		} else if stream.Index != n {
 			p("remux reason, %s stream moved from index %d to %d.",
 				stream.CodecType, stream.Index, n)
 			j.mux = true
@@ -730,13 +733,21 @@ func (j *Job) runJob() {
 	} else {
 		invalidChars := "text subtitle track contains invalid 8-bit characters"
 		if strings.Contains(w.warning, invalidChars) && isVideo(w.filename) {
-			p("extracting all internal subExternal")
+			p("extracting all internal subtitles")
 			j.extractSubs()
 			restart = true
 		}
 
 		audioInvalidData := regexp.MustCompile(`audio track contains \d+ bytes of invalid data`)
 		if audioInvalidData.MatchString(w.warning) && isVideo(w.filename) {
+			p("extracting all internal audio streams")
+			j.extractAudio(true)
+			restart = true
+		}
+
+		noAc3Header := "No AC-3 header found in first frame"
+		if strings.Contains(w.warning, noAc3Header) && isVideo(w.filename) {
+			p("extracting all internal audio streams")
 			j.extractAudio(true)
 			restart = true
 		}
