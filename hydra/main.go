@@ -266,7 +266,7 @@ func (d *Deluge) linkFinishedTorrents() {
 }
 
 func (d *Deluge) checkFinishedTorrents() {
-	if d.keepDone {
+	if d.keepDone && !isSnapraidRunning() {
 		d.linkFinishedTorrents()
 	} else {
 		d.removeFinishedTorrents()
@@ -686,6 +686,11 @@ func isUpgrade(new, old string) bool {
 		return newStat.Size() > oldStat.Size()
 	}
 	return false
+}
+func isSnapraidRunning() bool {
+	cmd := exec.Command("/usr/bin/pidof", "snapraid")
+	e := cmd.Run()
+	return e == nil
 }
 
 var (
