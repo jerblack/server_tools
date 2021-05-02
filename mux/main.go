@@ -18,18 +18,38 @@ import (
 )
 
 /*
-	remux all files into mkv with h264 video and ac3 audio with external subExternal embedded as mkv streams
+	remux or convert all files into single mkv with known compatible video and audio streams and no external subtitles.
 		requires: ffmpeg ffprobe mkvtoolnix
 		remux reasons
 			non-mkv container
-			external subExternal
+			external subtitle files
+			stream types out of order: video -> audio -> subtitles
 			video stream not first strewm
-			english audio not first audio stream (unless no english audio present)
-			english subExternal not first subtitle stream (unless no english subs present)
-		convert reason - audio
-			not "aac", "ac3", "eac3", "flac", "alac", "dts", "mp3", "truehd"
-		convert reason - video
-			not "h264", "hevc", "mpeg4"
+			audio out of order
+				english or undefined, non-english
+		    subtitles out of order
+				english forced, english, non-english forced, non-english
+		convert reasons
+			audio not in one of the following formats
+				"aac", "ac3", "eac3", "flac", "alac", "dts", "mp3", "truehd"
+            video not in one of the following formats
+				"h264", "hevc", "mpeg4"
+			subtitle in mov_text format
+		automatic problem handlers
+			all text subtitles converted to UTF-8 text encoding.
+			idx/sub subtitle
+				Warning: Unknown header [subtitle unusable, idx/sub moved to recycle]
+				No sub found for idx [subtitle unusable, idx moved to recycle]
+				No language ID set [id in idx file set to en]
+			srt subtitle
+				Warning: The start timestamp is smaller than that of the previous entry [srt file sorted by timestamp]
+			audio errors:
+				track contains X bytes of invalid data
+				No AC-3 header found in first frame
+					[All audio tracks demuxed from video stream and rewritten with corrupted portions of audio removed]
+			interlaced video
+				video deinterlaced during conversion with yadif video filter
+
 		optional external convert path
 			in scenarios where long conversion process would block other processing, an option is provided to move files
 			to a separate convert folder for a separate mux instance to convert
@@ -371,7 +391,7 @@ func (j *Job) start() {
 	}
 
 	j.parseStreams()
-	j.printStreams()
+	//j.printStreams()
 
 	if j.convert && moveConvert {
 		p("-mc is set, moving file to '%s' for conversion", moveConvertPath)
@@ -385,8 +405,6 @@ func (j *Job) start() {
 
 func (j *Job) findExternalSubs() []*Stream {
 	src := strings.ToLower(j.basename)
-	reIdx := regexp.MustCompile(`(?i).idx$`)
-	reSrt := regexp.MustCompile(`(?i).srt$`)
 	var subStreams []*Stream
 
 	walk := func(path string, info os.FileInfo, err error) error {
@@ -400,33 +418,10 @@ func (j *Job) findExternalSubs() []*Stream {
 			subFname := filepath.Base(strings.ToLower(path))
 			if strings.HasPrefix(subFname, src) {
 				p("found sub: %s", path)
-				p("ensuring external subtitle text encoding is UTF-8")
-				convertTextUtf8(path)
-
-				var subFile string
-				if reIdx.MatchString(path) {
-					p("ensuring idx has language id set")
-					if !checkIdxNoId(path) {
-						p("idx failed verification")
-						removeIdxSub(path)
-						return nil
-					}
-					p("running idx warning checks")
-					e := checkUnusableIdx(path)
-					if e != nil {
-						p("idx failed validation with error: %s", e.Error())
-						removeIdxSub(path)
-						return nil
-					}
-					e, subFile = findIdxSub(path)
-					if e != nil {
-						p("no matching sub file found for idx: %s", path)
-						return nil
-					}
-				}
-				if reSrt.MatchString(path) {
-					e := checkSortedSrt(path)
-					chkFatal(e)
+				e, subFile := j.validateSub(path)
+				if e != nil {
+					p("subtitle failed validation, skipping file %s", path)
+					return nil
 				}
 
 				e, streams := j.getStreams(path)
@@ -456,7 +451,45 @@ func (j *Job) findExternalSubs() []*Stream {
 	chkFatal(err)
 	return subStreams
 }
+func (j *Job) validateSub(path string) (error, string) {
+	var subFile string
 
+	reIdx := regexp.MustCompile(`(?i).idx$`)
+	reSrt := regexp.MustCompile(`(?i).srt$`)
+
+	p("ensuring external subtitle text encoding is UTF-8")
+	convertTextUtf8(path)
+
+	if reIdx.MatchString(path) {
+		p("ensuring idx has language id set")
+		if !checkIdxNoId(path) {
+			p("idx failed verification")
+			removeIdxSub(path)
+			return errors.New("idx failed verification"), ""
+		}
+		p("running idx warning checks")
+		e := checkUnusableIdx(path)
+		if e != nil {
+			errText := fmt.Sprintf("idx failed validation with error: %s", e.Error())
+			p(errText)
+			removeIdxSub(path)
+			return errors.New(errText), ""
+		}
+		e, subFile = findIdxSub(path)
+		if e != nil {
+			errText := fmt.Sprintf("no matching sub file found for idx: %s", path)
+			p(errText)
+			return errors.New(errText), ""
+		}
+	}
+	if reSrt.MatchString(path) {
+		e := checkSortedSrt(path)
+		if e != nil {
+			return e, ""
+		}
+	}
+	return nil, subFile
+}
 func (j *Job) getStreams(path string) (error, []*Stream) {
 	var ffStreams FfprobeStreams
 	cmd := exec.Command("ffprobe", "-v", "quiet", "-print_format", "json", "-show_streams", path)
@@ -663,11 +696,24 @@ func (j *Job) extractSubs() {
 	for _, stream := range j.streams {
 		if stream.CodecType == "subtitle" && stream.elementaryStream == "" {
 			ext := exts[stream.CodecName]
-			stream.elementaryStream = fmt.Sprintf("%s.%d%s", j.baseWithPath, stream.Index, ext)
+			elm := fmt.Sprintf("%s.%d%s", j.baseWithPath, stream.Index, ext)
 			cmd := exec.Command("ffmpeg", "-i", j.video, "-map", fmt.Sprintf("0:%d", stream.Index),
-				"-c:s", "copy", stream.elementaryStream)
+				"-c:s", "copy", elm)
 			e := cmd.Run()
 			chk(e)
+			if e == nil {
+				e, subName := j.validateSub(elm)
+				if e != nil {
+					p("subtitle failed validation, skipping file %s", elm)
+					removeFile(elm)
+					if subName != "" {
+						removeFile(subName)
+					}
+				} else {
+					stream.elementaryStream = elm
+					stream.subFile = subName
+				}
+			}
 		}
 	}
 }
@@ -717,12 +763,12 @@ func (j *Job) runJob() {
 					chk(err)
 				}
 				for _, s := range j.streams {
-					if s.elementaryStream != "" {
+					if s.elementaryStream != "" && fileExists(s.elementaryStream) {
 						p("removing temporary elementary stream: %s", s.elementaryStream)
 						e := os.Remove(s.elementaryStream)
 						chk(e)
 					}
-					if s.subFile != "" {
+					if s.subFile != "" && fileExists(s.subFile) {
 						p("removing temporary elementary stream: %s", s.subFile)
 						e := os.Remove(s.subFile)
 						chk(e)
@@ -780,6 +826,9 @@ func (j *Job) move(path string) {
 		files = append(files, s.elementaryStream)
 	}
 	for _, f := range files {
+		if !fileExists(f) {
+			continue
+		}
 		var newPath string
 		if moveRel {
 			newPath = strings.Replace(f, relPath, path, 1)
