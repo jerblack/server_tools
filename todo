@@ -1,4 +1,3 @@
-TODO: MUX: handle -> mkvmerge warning : This text subtitle track contains invalid 8-bit characters outside valid multi-byte UTF-8 sequences
 TODO: MUX: move recycle reference to switch and use switch in hydra
 
 TODO: HYDRA: add conf option to auto-delete torrents after x days unfinished & mark in sonarr as dead

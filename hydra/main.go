@@ -25,8 +25,6 @@ var (
 
 	procFolder, preProcFolder, convertFolder, recycleFolder, torFolder, probFolder string
 
-	seedMarker = ".grabbed"
-
 	torFileInterval = 30
 	convertInterval = 60
 	delugeInterval  = 60
@@ -34,7 +32,6 @@ var (
 	delugeDaemons map[string]*Deluge
 	defaultDeluge *Deluge
 	torFile       TorFile
-	proc          Proc
 
 	sabApi, sabIp, sabPort string
 )
@@ -78,9 +75,11 @@ func (dt *DelugeTorrent) linkFiles() error {
 		if e != nil {
 			return e
 		}
-		e = os.Link(src, dst)
-		if e != nil {
-			return e
+		if !fileExists(dst) {
+			e = os.Link(src, dst)
+			if e != nil {
+				return e
+			}
 		}
 	}
 	return nil
@@ -136,7 +135,6 @@ func (d *Deluge) getFinished() []DelugeTorrent {
 	if e != nil && !strings.Contains(e.Error(), `field "ETA"`) {
 		chk(e)
 	}
-	var fin []string
 	for k, v := range tors {
 		var dt DelugeTorrent
 		dt.id = k
@@ -144,11 +142,13 @@ func (d *Deluge) getFinished() []DelugeTorrent {
 		dt.seedTime = v.SeedingTime
 		dt.ratio = v.Ratio
 		dt.deluge = d
+		//if v.SavePath == d.doneFolder {
+		//	p(v.Name)
+		//	p(v.SavePath)
+		//	p("%t %t %t %t %t", v.IsSeed, v.IsFinished, v.State == "Seeding", v.Progress == 100, v.SavePath == d.doneFolder)
+		//}
+
 		if v.IsSeed && v.IsFinished && v.State == "Seeding" && v.Progress == 100 && v.SavePath == d.doneFolder {
-			if isAny(k, d.finished...) {
-				fin = append(fin, k)
-				continue
-			}
 			path := filepath.Join(d.doneFolder, v.Files[0].Path)
 			_, e = os.Stat(path)
 			if e == nil {
@@ -163,11 +163,9 @@ func (d *Deluge) getFinished() []DelugeTorrent {
 					dt.relPath = strings.SplitN(_p, "/", 2)[0]
 				}
 				torrents = append(torrents, dt)
-				fin = append(fin, k)
 			}
 		}
 	}
-	d.finished = fin
 	return torrents
 }
 
@@ -240,21 +238,31 @@ func (d *Deluge) removeFinishedTorrents() {
 	rmEmptyFolders(d.doneFolder)
 }
 func (d *Deluge) linkFinishedTorrents() {
-	//if !d.open() {
-	//	return
-	//}
-	//defer d.close()
+	var fin []string
+	//p("attempting linkFinishedTorrents")
 	if !d.verifyOpen() {
+		p("failed on verify open to deluge daemon %s", d.name)
 		return
 	}
 	torrents := d.getFinished()
+	if len(torrents) > 0 {
+		p("found %d finished torrents", len(torrents))
+	}
 	for _, dt := range torrents {
+		if isAny(d.name, d.finished...) {
+			fin = append(fin, d.name)
+			continue
+		}
+
 		p("torrent finished: %s", dt.name)
 		e := dt.linkFiles()
 		chkFatal(e)
 		e = dt.moveStorage()
 		chkFatal(e)
+		fin = append(fin, d.name)
 	}
+	d.finished = fin
+
 }
 
 func (d *Deluge) checkFinishedTorrents() {
@@ -480,16 +488,14 @@ func (tf *TorFile) torrent(torrentPath string) {
 	defaultDeluge.addTorrent(torrentPath)
 }
 
-type Proc struct{}
-
-func (pr *Proc) extractPreProc() {
+func extractPreProc() {
 	if !isDirEmpty(preProcFolder) {
 		p("running extract in %s", preProcFolder)
 		err := run("/usr/bin/extract", preProcFolder)
 		chk(err)
 	}
 }
-func (pr *Proc) muxPreProc() {
+func muxPreProc() {
 	if !isDirEmpty(preProcFolder) {
 		p("running mux in %s", preProcFolder)
 		cmd := []string{"/usr/bin/mux", "-r", "-p", preProcFolder, "-mc", convertFolder}
@@ -501,7 +507,7 @@ func (pr *Proc) muxPreProc() {
 		chk(err)
 	}
 }
-func (pr *Proc) muxConvert() {
+func muxConvert() {
 	for {
 		time.Sleep(time.Duration(convertInterval) * time.Second)
 		if !isDirEmpty(convertFolder) {
@@ -515,9 +521,7 @@ func (pr *Proc) muxConvert() {
 			rmEmptyFolders(convertFolder)
 		}
 	}
-
 }
-
 func pruneTorrents() {
 	for {
 		p("checking for torrents to prune")
@@ -543,38 +547,37 @@ func pruneTorrents() {
 		time.Sleep(6 * time.Hour)
 	}
 }
+func finishTorrents() {
+	time.Sleep(time.Duration(3) * time.Second)
+	for {
+		for _, d := range delugeDaemons {
+			d.checkFinishedTorrents()
+			d.checkStuckTorrents()
+		}
+		if !isDirEmpty(preProcFolder) {
+			extractPreProc()
+			muxPreProc()
+			mvTree(preProcFolder, procFolder, true)
+		}
+		time.Sleep(time.Duration(delugeInterval) * time.Second)
+	}
+}
 
 func main() {
 	parseConfig()
 	getDelugeClients()
 	go torFile.start()
-	go proc.muxConvert()
+	go muxConvert()
 	go pruneTorrents()
-
-	go func() {
-		for {
-			time.Sleep(time.Duration(delugeInterval) * time.Second)
-			for _, d := range delugeDaemons {
-				d.checkFinishedTorrents()
-				d.checkStuckTorrents()
-			}
-			if !isDirEmpty(preProcFolder) {
-				proc.extractPreProc()
-				proc.muxPreProc()
-				mvTree(preProcFolder, procFolder, true)
-			}
-		}
-	}()
+	go finishTorrents()
 
 	signalChan := make(chan os.Signal, 1)
-
 	signal.Notify(
 		signalChan,
 		syscall.SIGHUP,  // kill -SIGHUP XXXX
 		syscall.SIGINT,  // kill -SIGINT XXXX or Ctrl+c
 		syscall.SIGQUIT, // kill -SIGQUIT XXXX
 	)
-
 	<-signalChan
 	p("exiting. doing cleanup.")
 	for _, d := range delugeDaemons {
@@ -614,24 +617,34 @@ func mvTree(src, dst string, removeEmpties bool) {
 		if _, err := os.Stat(dstFile); err == nil {
 			// file exists
 			recycled := strings.Replace(f, src, recycleFolder, 1)
-			err := os.MkdirAll(filepath.Dir(recycled), 0777)
+			err := os.MkdirAll(filepath.Dir(recycled), 0755)
 			chkFatal(err)
 			if isUpgrade(f, dstFile) {
 				p("%s is an upgrade, replacing and recycling %s", f, dstFile)
-				renErr := os.Rename(dstFile, recycled)
-				chkFatal(renErr)
-				renErr = os.Rename(f, dstFile)
-				chkFatal(renErr)
+				if fileExists(dstFile) && fileExists(filepath.Dir(recycled)) {
+					renErr := os.Rename(dstFile, recycled)
+					chkFatal(renErr)
+				}
+				if fileExists(f) {
+					renErr := os.Rename(f, dstFile)
+					chkFatal(renErr)
+				}
 			} else {
 				p("recycling %s, it is not an upgrade for %s", f, dstFile)
-				renErr := os.Rename(f, recycled)
-				chkFatal(renErr)
+				if fileExists(f) && fileExists(filepath.Dir(recycled)) {
+					renErr := os.Rename(f, recycled)
+					chkFatal(renErr)
+				}
 			}
 		} else if errors.Is(err, os.ErrNotExist) {
 			// file not exist
 			p("moving new file to %s", dstFile)
-			renErr := os.Rename(f, dstFile)
-			chkFatal(renErr)
+			err := os.MkdirAll(filepath.Dir(dstFile), 0755)
+			chkFatal(err)
+			if fileExists(f) {
+				renErr := os.Rename(f, dstFile)
+				chkFatal(renErr)
+			}
 		} else {
 			// problem checking if exists
 			chkFatal(err)
@@ -685,4 +698,5 @@ var (
 	isDirEmpty     = base.IsDirEmpty
 	getAltPath     = base.GetAltPath
 	isAny          = base.IsAny
+	fileExists     = base.FileExists
 )
