@@ -249,8 +249,8 @@ func (d *Deluge) linkFinishedTorrents() {
 		p("found %d finished torrents", len(torrents))
 	}
 	for _, dt := range torrents {
-		if isAny(d.name, d.finished...) {
-			fin = append(fin, d.name)
+		if isAny(dt.name, d.finished...) {
+			fin = append(fin, dt.name)
 			continue
 		}
 
@@ -259,7 +259,7 @@ func (d *Deluge) linkFinishedTorrents() {
 		chkFatal(e)
 		e = dt.moveStorage()
 		chkFatal(e)
-		fin = append(fin, d.name)
+		fin = append(fin, dt.name)
 	}
 	d.finished = fin
 
@@ -584,7 +584,6 @@ func main() {
 		p("closing connection to daemon %s", d.name)
 		d.close()
 	}
-
 }
 func mvTree(src, dst string, removeEmpties bool) {
 	p("moving tree %s to %s", src, dst)
