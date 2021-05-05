@@ -98,6 +98,7 @@ var (
 	moveFinished bool
 	moveRel      bool
 	moveProb     bool
+	force        bool
 
 	argR, argP, argF, argW bool
 
@@ -181,6 +182,9 @@ func getArgs() {
 		}
 	}
 
+	if isAny("-force", args...) {
+		force = true
+	}
 	if isAny("-r", args...) {
 		argR = true
 	}
@@ -396,7 +400,7 @@ func (j *Job) start() {
 	if j.convert && moveConvert {
 		p("-mc is set, moving file to '%s' for conversion", moveConvertPath)
 		j.move(moveConvertPath)
-	} else if j.mux {
+	} else if j.mux || force {
 		j.convertStreams()
 		j.buildCmdLine()
 		j.runJob()
@@ -479,6 +483,7 @@ func (j *Job) validateSub(path string) (error, string) {
 		if e != nil {
 			errText := fmt.Sprintf("no matching sub file found for idx: %s", path)
 			p(errText)
+			removeFile(path)
 			return errors.New(errText), ""
 		}
 	}

@@ -523,6 +523,7 @@ func muxConvert() {
 	}
 }
 func pruneTorrents() {
+	time.Sleep(20 * time.Second)
 	for {
 		p("checking for torrents to prune")
 		for _, d := range delugeDaemons {
