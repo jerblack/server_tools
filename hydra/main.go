@@ -37,11 +37,13 @@ var (
 )
 
 type DelugeTorrent struct {
-	name, id, relPath string
-	seedTime          int64
-	ratio             float32
-	files             []string
-	deluge            *Deluge
+	name, id, relPath  string
+	state, savePath    string
+	seedTime           int64
+	ratio, progress    float32
+	files              []string
+	deluge             *Deluge
+	isSeed, isFinished bool
 }
 
 func (dt *DelugeTorrent) pause() error {
@@ -125,8 +127,7 @@ func (d *Deluge) verifyOpen() bool {
 	}
 	return true
 }
-
-func (d *Deluge) getFinished() []DelugeTorrent {
+func (d *Deluge) getTorrents() []DelugeTorrent {
 	var torrents []DelugeTorrent
 	if !d.verifyOpen() {
 		return torrents
@@ -142,31 +143,55 @@ func (d *Deluge) getFinished() []DelugeTorrent {
 		dt.seedTime = v.SeedingTime
 		dt.ratio = v.Ratio
 		dt.deluge = d
-		//if v.SavePath == d.doneFolder {
-		//	p(v.Name)
-		//	p(v.SavePath)
-		//	p("%t %t %t %t %t", v.IsSeed, v.IsFinished, v.State == "Seeding", v.Progress == 100, v.SavePath == d.doneFolder)
-		//}
+		dt.state = v.State
+		dt.savePath = v.SavePath
+		dt.isFinished = v.IsFinished
+		dt.isSeed = v.IsSeed
+		dt.progress = v.Progress
+		var files []string
+		for _, f := range v.Files {
+			files = append(files, filepath.Join(v.SavePath, f.Path))
+		}
+		dt.files = files
 
-		if v.IsSeed && v.IsFinished && v.State == "Seeding" && v.Progress == 100 && v.SavePath == d.doneFolder {
-			path := filepath.Join(d.doneFolder, v.Files[0].Path)
-			_, e = os.Stat(path)
-			if e == nil {
-				var files []string
-				for _, f := range v.Files {
-					files = append(files, filepath.Join(d.doneFolder, f.Path))
-				}
-				dt.files = files
-
-				_p := v.Files[0].Path
-				if strings.Contains(_p, "/") {
-					dt.relPath = strings.SplitN(_p, "/", 2)[0]
-				}
-				torrents = append(torrents, dt)
+		if len(v.Files) > 0 {
+			path := v.Files[0].Path
+			if strings.Contains(path, "/") {
+				dt.relPath = strings.SplitN(path, "/", 2)[0]
 			}
 		}
+
+		torrents = append(torrents, dt)
 	}
+
 	return torrents
+}
+func (d *Deluge) getFinished() []DelugeTorrent {
+	var fin []DelugeTorrent
+	for _, t := range d.getTorrents() {
+		if t.isSeed && t.isFinished && t.state == "Seeding" && t.progress == 100 && t.savePath == d.doneFolder {
+			fin = append(fin, t)
+		}
+	}
+	return fin
+}
+func (d *Deluge) getErrors() []DelugeTorrent {
+	var errs []DelugeTorrent
+	for _, t := range d.getTorrents() {
+		if t.state == "Error" {
+			errs = append(errs, t)
+		}
+	}
+	return errs
+}
+func (d *Deluge) getChecking() []DelugeTorrent {
+	var errs []DelugeTorrent
+	for _, t := range d.getTorrents() {
+		if strings.Contains(t.state, "Checking") {
+			errs = append(errs, t)
+		}
+	}
+	return errs
 }
 
 func (d *Deluge) getClient() {
@@ -263,6 +288,25 @@ func (d *Deluge) linkFinishedTorrents() {
 	}
 	d.finished = fin
 
+}
+
+func (d *Deluge) recheckErrors() {
+	errs := d.getErrors()
+	for _, t := range errs {
+		e := d.client.ForceRecheck(t.id)
+		chk(e)
+		checking := true
+		for checking {
+			st, e := d.client.TorrentStatus(t.id)
+			chk(e)
+			if st.State != "Checking" && st.State != "Error" {
+				p("state not Checking, it is: %s", st.State)
+				checking = false
+			}
+
+			time.Sleep(3 * time.Second)
+		}
+	}
 }
 
 func (d *Deluge) checkFinishedTorrents() {
@@ -530,6 +574,16 @@ func muxConvert() {
 		}
 	}
 }
+func recheckErrors() {
+	time.Sleep(30 * time.Second)
+	for {
+		p("checking for torrents in error state")
+		for _, d := range delugeDaemons {
+			d.recheckErrors()
+		}
+		time.Sleep(30 * time.Minute)
+	}
+}
 func pruneTorrents() {
 	time.Sleep(20 * time.Second)
 	for {
@@ -579,6 +633,7 @@ func main() {
 	go muxConvert()
 	go pruneTorrents()
 	go finishTorrents()
+	go recheckErrors()
 
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(
