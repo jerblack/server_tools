@@ -1008,10 +1008,9 @@ func removeFile(f string) {
 	if recyclePath != "" {
 		dst := strings.Replace(f, dir, recyclePath, 1)
 		p("moving file %s -> %s", f, dst)
-		e := os.MkdirAll(filepath.Dir(dst), 0777)
+		e := mvFile(f, dst)
 		chkFatal(e)
-		e = os.Rename(f, dst)
-		chkFatal(e)
+
 	} else {
 		p("deleting file %s", f)
 		e := os.Remove(f)

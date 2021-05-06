@@ -173,10 +173,60 @@ func GetFile(file string) string {
 func SetFile(file, val string) {
 	_ = os.WriteFile(file, []byte(val), 0400)
 }
-func MvFile(src, dst string) error {
-	e := os.MkdirAll(filepath.Dir(dst), 0777)
-	ChkFatal(e)
+func RenFile(src, dst string) error {
+	e := os.MkdirAll(filepath.Dir(dst), 0755)
+	if e != nil {
+		return e
+	}
 	return os.Rename(src, dst)
+}
+func MvFile(src, dst string) error {
+	e := os.MkdirAll(filepath.Dir(dst), 0755)
+	if e != nil {
+		return e
+	}
+	e = os.Rename(src, dst)
+	if e == nil {
+		return nil
+	}
+	if !strings.Contains(e.Error(), "invalid cross-device link") {
+		return e
+	}
+
+	in, e := os.Open(src)
+	if e != nil {
+		return e
+	}
+	out, e := os.Create(dst)
+	if e != nil {
+		return e
+	}
+	defer out.Close()
+	_, e = io.Copy(out, in)
+	if e != nil {
+		return e
+	}
+	e = in.Close()
+	if e != nil {
+		return e
+	}
+	e = out.Sync()
+	if e != nil {
+		return e
+	}
+	st, e := os.Stat(src)
+	if e != nil {
+		return e
+	}
+	e = os.Chmod(dst, st.Mode())
+	if e != nil {
+		return e
+	}
+	e = os.Remove(src)
+	if e != nil {
+		return e
+	}
+	return nil
 }
 
 func MvTree(src, dst string, removeEmpties bool) {
