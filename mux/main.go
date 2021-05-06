@@ -782,6 +782,11 @@ func (j *Job) runJob() {
 			}
 		}
 	} else {
+		qtReaderNoChunk := regexp.MustCompile(`Quicktime/MP4 reader: Could not read chunk number \d+/\d+ with size \d+ from position \d+. Aborting.`)
+		if qtReaderNoChunk.MatchString(w.warning) {
+			p("failed to read corrupt video file: %s", j.video)
+		}
+
 		invalidChars := "text subtitle track contains invalid 8-bit characters"
 		if strings.Contains(w.warning, invalidChars) && isVideo(w.filename) {
 			p("extracting all internal subtitles")
@@ -883,13 +888,18 @@ func checkSortedSrt(srt string) error {
 
 	if timestampProblem {
 		p("srt was not sorted by timestamp. fixing.")
-		e := os.Remove(srt)
-		chkFatal(e)
-		e = os.Rename(tmp, srt)
+		if fileExists(srt) {
+			e := os.Remove(srt)
+			chkFatal(e)
+		}
+
+		e := os.Rename(tmp, srt)
 		chkFatal(e)
 	} else {
-		e := os.Remove(tmp)
-		chkFatal(e)
+		if fileExists(tmp) {
+			e := os.Remove(tmp)
+			chkFatal(e)
+		}
 	}
 
 	if errText != "" {
@@ -1071,6 +1081,7 @@ func runWarning(cmdLine []string, showStdout bool) *Warning {
 	scanner := bufio.NewScanner(r)
 	reNoTrack := regexp.MustCompile(`Warning: '(.+)': (.+)`)
 	reTrack := regexp.MustCompile(`Warning: '(.+)' track (\d+): (.+)`)
+	reNoFile := regexp.MustCompile(`Warning: (.+)`)
 
 	go func() {
 		var w Warning
@@ -1088,6 +1099,9 @@ func runWarning(cmdLine []string, showStdout bool) *Warning {
 				w.filename = matches[1]
 				w.track, _ = strconv.Atoi(matches[2])
 				w.warning = matches[3]
+			} else if reNoFile.MatchString(line) {
+				matches := reNoFile.FindStringSubmatch(line)
+				w.warning = matches[1]
 			}
 		}
 

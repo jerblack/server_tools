@@ -120,7 +120,7 @@ func (d *Deluge) verifyOpen() bool {
 	_, e := d.client.DaemonVersion()
 	if e != nil {
 		chk(e)
-		d.close()
+		//d.close()
 		return d.open()
 	}
 	return true
@@ -286,12 +286,16 @@ func (d *Deluge) addMagnet(magnetPath string) {
 	chkFatal(e)
 	mag := string(f)
 	hash, e := d.client.AddTorrentMagnet(mag, nil)
-	chkFatal(e)
-	p("add magnet file successful: %s", hash)
-	rec := strings.Replace(magnetPath, torFolder, recycleFolder, 1)
-	rec = getAltPath(rec)
-	e = os.Rename(magnetPath, rec)
-	chkFatal(e)
+	if e != nil {
+		p("add magnet file failed: %s", e.Error())
+	} else {
+		p("add magnet file successful: %s", hash)
+		rec := strings.Replace(magnetPath, torFolder, recycleFolder, 1)
+		rec = getAltPath(rec)
+		e = os.Rename(magnetPath, rec)
+		chkFatal(e)
+	}
+
 }
 func (d *Deluge) addTorrent(torrentPath string) {
 	//if !d.open() {
@@ -307,12 +311,16 @@ func (d *Deluge) addTorrent(torrentPath string) {
 	encoded := base64.StdEncoding.EncodeToString(t)
 	fName := filepath.Base(torrentPath)
 	hash, e := d.client.AddTorrentFile(fName, encoded, nil)
-	chkFatal(e)
-	p("add torrent file successful: %s", hash)
-	rec := strings.Replace(torrentPath, torFolder, recycleFolder, 1)
-	rec = getAltPath(rec)
-	e = os.Rename(torrentPath, rec)
-	chkFatal(e)
+	if e != nil {
+		p("add torrent file failed: %s", e.Error())
+	} else {
+		p("add torrent file successful: %s", hash)
+		rec := strings.Replace(torrentPath, torFolder, recycleFolder, 1)
+		rec = getAltPath(rec)
+		e = os.Rename(torrentPath, rec)
+		chkFatal(e)
+	}
+
 }
 
 func parseConfig() {
