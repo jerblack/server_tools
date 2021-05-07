@@ -8,6 +8,7 @@ import (
 	"github.com/jerblack/server_tools/base"
 	"golang.org/x/net/html/charset"
 	"golang.org/x/text/transform"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -599,6 +600,11 @@ func (j *Job) convertStreams() {
 				if !isAny(s.FieldOrder, "progressive", "unknown", "") {
 					add("-vf", "yadif")
 				}
+				if s.Height%2 != 0 || s.Width%2 != 0 {
+					x := math.Ceil(float64(s.Width)/2) * 2
+					y := math.Ceil(float64(s.Height)/2) * 2
+					add("-vf", fmt.Sprintf("pad=%d:%d", int(x), int(y)))
+				}
 				add("-c:v", "h264", "-preset", "slow", "-crf", "17", "-movflags", "+faststart", "-pix_fmt",
 					"yuv420p", s.elementaryStream)
 			}
@@ -1027,6 +1033,8 @@ type Stream struct {
 	convert          bool
 	subFile          string
 	elementaryStream string
+	Width            int    `json:"width"`
+	Height           int    `json:"height"`
 	CodecName        string `json:"codec_name"`
 	CodecType        string `json:"codec_type"`
 	FieldOrder       string `json:"field_order"`
