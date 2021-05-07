@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	delugeclient "github.com/jerblack/go-libdeluge"
 	"github.com/jerblack/server_tools/base"
 	"os"
@@ -36,6 +37,385 @@ var (
 	sabApi, sabIp, sabPort string
 )
 
+type DelugeCommand struct {
+	fn           string
+	id           string
+	ids          []string
+	target       string
+	tf           bool
+	torrentState delugeclient.TorrentState
+}
+type DelugeResponse struct {
+	err      error
+	success  bool
+	torrents []DelugeTorrent
+	torrent  DelugeTorrent
+	hash     string
+}
+
+type Deluge struct {
+	daemon   *delugeclient.Client
+	cmd      chan DelugeCommand
+	response chan DelugeResponse
+
+	name, ip, user, pass                   string
+	doneFolder, seedFolder, downloadFolder string
+	trackers                               []string
+	port                                   uint
+	keepDone                               bool
+	keepRatio                              float32
+	keepTime                               int64
+	stuckDl                                map[string]int
+	stuckSeeds                             map[string]int
+	finished                               []string
+}
+
+func (d *Deluge) start() {
+	d.daemon = delugeclient.NewV1(delugeclient.Settings{
+		Port: d.port, Login: d.user, Password: d.pass, Hostname: d.ip,
+	})
+	d.stuckDl = make(map[string]int)
+	d.stuckSeeds = make(map[string]int)
+	d.cmd = make(chan DelugeCommand, 1)
+	d.response = make(chan DelugeResponse, 1)
+	go d.handler()
+	d.open()
+
+}
+func (d *Deluge) handler() {
+	for cmd := range d.cmd {
+		d.verifyOpen()
+		switch cmd.fn {
+		case "PauseTorrents":
+			e := d.daemon.PauseTorrents(cmd.ids...)
+			d.response <- DelugeResponse{
+				err: e,
+			}
+		case "RemoveTorrent":
+			success, e := d.daemon.RemoveTorrent(cmd.id, cmd.tf)
+			d.response <- DelugeResponse{
+				err:     e,
+				success: success,
+			}
+		case "MoveStorage":
+			e := d.daemon.MoveStorage(cmd.ids, cmd.target)
+			d.response <- DelugeResponse{
+				err: e,
+			}
+		case "TorrentsStatus":
+			t, e := d.daemon.TorrentsStatus(cmd.torrentState, nil)
+			d.response <- DelugeResponse{
+				err:      e,
+				torrents: d.parseTorrents(t),
+			}
+		case "TorrentStatus":
+			t, e := d.daemon.TorrentStatus(cmd.id)
+			d.response <- DelugeResponse{
+				err:     e,
+				torrent: d.parseTorrent(cmd.id, t),
+			}
+		case "ForceRecheck":
+			e := d.daemon.ForceRecheck(cmd.ids...)
+			d.response <- DelugeResponse{
+				err: e,
+			}
+		case "AddTorrentMagnet":
+			f, e := os.ReadFile(cmd.id)
+			chkFatal(e)
+			mag := string(f)
+			hash, e := d.daemon.AddTorrentMagnet(mag, nil)
+			d.response <- DelugeResponse{
+				err:  e,
+				hash: hash,
+			}
+		case "AddTorrentFile":
+			t, e := os.ReadFile(cmd.id)
+			chkFatal(e)
+			encoded := base64.StdEncoding.EncodeToString(t)
+			fName := filepath.Base(cmd.id)
+			hash, e := d.daemon.AddTorrentFile(fName, encoded, nil)
+			d.response <- DelugeResponse{
+				err:  e,
+				hash: hash,
+			}
+		}
+	}
+}
+func (d *Deluge) parseTorrent(id string, t *delugeclient.TorrentStatus) DelugeTorrent {
+	var dt DelugeTorrent
+	dt.id = id
+	dt.name = t.Name
+	dt.seedTime = t.SeedingTime
+	dt.ratio = t.Ratio
+	dt.deluge = d
+	dt.state = t.State
+	dt.savePath = t.SavePath
+	dt.isFinished = t.IsFinished
+	dt.isSeed = t.IsSeed
+	dt.progress = t.Progress
+	var files []string
+	for _, f := range t.Files {
+		files = append(files, filepath.Join(t.SavePath, f.Path))
+	}
+	dt.files = files
+
+	if len(t.Files) > 0 {
+		path := t.Files[0].Path
+		if strings.Contains(path, "/") {
+			dt.relPath = strings.SplitN(path, "/", 2)[0]
+		}
+	}
+	return dt
+}
+func (d *Deluge) parseTorrents(torrents map[string]*delugeclient.TorrentStatus) []DelugeTorrent {
+	var tor []DelugeTorrent
+	for k, v := range torrents {
+		dt := d.parseTorrent(k, v)
+		tor = append(tor, dt)
+	}
+	return tor
+}
+func (d *Deluge) open() bool {
+	p("opening connection to daemon %s", d.name)
+	e := d.daemon.Connect()
+	if e != nil {
+		chk(e)
+		return false
+	}
+	return true
+}
+func (d *Deluge) close() {
+	e := d.daemon.Close()
+	chk(e)
+}
+func (d *Deluge) verifyOpen() bool {
+	_, e := d.daemon.DaemonVersion()
+	if e != nil {
+		chk(e)
+		//d.close()
+		return d.open()
+	}
+	return true
+}
+func (d *Deluge) PauseTorrents(ids ...string) error {
+	d.cmd <- DelugeCommand{
+		fn:  "PauseTorrents",
+		ids: ids,
+	}
+	rsp := <-d.response
+	return rsp.err
+}
+func (d *Deluge) ForceRecheck(ids ...string) error {
+	d.cmd <- DelugeCommand{
+		fn:  "ForceRecheck",
+		ids: ids,
+	}
+	rsp := <-d.response
+	return rsp.err
+}
+func (d *Deluge) RemoveTorrent(id string, rmFile bool) (bool, error) {
+	d.cmd <- DelugeCommand{
+		fn: "RemoveTorrent",
+		id: id,
+		tf: rmFile,
+	}
+	rsp := <-d.response
+	return rsp.success, rsp.err
+}
+func (d *Deluge) AddTorrentMagnet(magnetPath string) {
+	p("adding magnet file to %s: %s", d.name, magnetPath)
+	d.cmd <- DelugeCommand{
+		fn: "AddTorrentMagnet",
+		id: magnetPath,
+	}
+	rsp := <-d.response
+	if rsp.err != nil {
+		p("add magnet file failed: %s", rsp.err.Error())
+	} else {
+		p("add magnet file successful: %s", rsp.hash)
+		rec := strings.Replace(magnetPath, torFolder, recycleFolder, 1)
+		rec = getAltPath(rec)
+		e := os.Rename(magnetPath, rec)
+		chkFatal(e)
+	}
+}
+func (d *Deluge) AddTorrentFile(torrentPath string) {
+	p("adding torrent file to %s: %s", d.name, torrentPath)
+	d.cmd <- DelugeCommand{
+		fn: "AddTorrentFile",
+		id: torrentPath,
+	}
+	rsp := <-d.response
+	if rsp.err != nil {
+		p("add torrent file failed: %s", rsp.err.Error())
+	} else {
+		p("add torrent file successful: %s", rsp.hash)
+		rec := strings.Replace(torrentPath, torFolder, recycleFolder, 1)
+		rec = getAltPath(rec)
+		e := os.Rename(torrentPath, rec)
+		chkFatal(e)
+	}
+}
+func (d *Deluge) MoveStorage(ids []string, dst string) error {
+	d.cmd <- DelugeCommand{
+		fn:     "MoveStorage",
+		ids:    ids,
+		target: dst,
+	}
+	rsp := <-d.response
+	return rsp.err
+}
+func (d *Deluge) TorrentStatus(id string) (DelugeTorrent, error) {
+	d.cmd <- DelugeCommand{
+		fn: "TorrentStatus",
+		id: id,
+	}
+	rsp := <-d.response
+	return rsp.torrent, rsp.err
+}
+func (d *Deluge) TorrentsStatus(state delugeclient.TorrentState) ([]DelugeTorrent, error) {
+	d.cmd <- DelugeCommand{
+		fn:           "TorrentsStatus",
+		torrentState: state,
+	}
+	rsp := <-d.response
+	return rsp.torrents, rsp.err
+}
+func (d *Deluge) getTorrents() []DelugeTorrent {
+	torrents, e := d.TorrentsStatus(delugeclient.StateUnspecified)
+	if e != nil && !strings.Contains(e.Error(), `field "ETA"`) {
+		chkFatal(e)
+	}
+	return torrents
+}
+func (d *Deluge) getFinished() []DelugeTorrent {
+	torrents, e := d.TorrentsStatus(delugeclient.StateSeeding)
+	if e != nil && !strings.Contains(e.Error(), `field "ETA"`) {
+		chkFatal(e)
+	}
+	var fin []DelugeTorrent
+	for _, t := range torrents {
+		if t.isSeed && t.isFinished && t.state == "Seeding" && t.progress == 100 && t.savePath == d.doneFolder {
+			fin = append(fin, t)
+		}
+	}
+	return fin
+}
+func (d *Deluge) getErrors() []DelugeTorrent {
+	torrents, e := d.TorrentsStatus(delugeclient.StateError)
+	if e != nil && !strings.Contains(e.Error(), `field "ETA"`) {
+		chkFatal(e)
+	}
+	var errs []DelugeTorrent
+	for _, t := range torrents {
+		if t.state == "Error" {
+			errs = append(errs, t)
+		}
+	}
+	return errs
+}
+func (d *Deluge) getChecking() []DelugeTorrent {
+	torrents, e := d.TorrentsStatus(delugeclient.StateChecking)
+	if e != nil && !strings.Contains(e.Error(), `field "ETA"`) {
+		chkFatal(e)
+	}
+	return torrents
+}
+func (d *Deluge) checkStuckTorrents() {
+	tors := d.getTorrents()
+	for _, v := range tors {
+		if v.state == "Downloading" && v.progress == 100 {
+			n := d.stuckDl[v.id]
+			n = n + 1
+			d.stuckDl[v.id] = n
+			if n >= 3 {
+				delete(d.stuckDl, v.id)
+				e := d.ForceRecheck(v.id)
+				chk(e)
+			}
+		}
+		if v.state == "Seeding" && v.progress == 100 && v.savePath == d.downloadFolder {
+			n := d.stuckSeeds[v.id]
+			n = n + 1
+			d.stuckSeeds[v.id] = n
+			if n >= 3 {
+				delete(d.stuckSeeds, v.id)
+				e := d.MoveStorage([]string{v.id}, d.doneFolder)
+				chk(e)
+			}
+		}
+	}
+}
+func (d *Deluge) checkFinishedTorrents() {
+	if d.keepDone && !isSnapraidRunning() {
+		d.linkFinishedTorrents()
+	} else {
+		d.removeFinishedTorrents()
+	}
+}
+func (d *Deluge) removeFinishedTorrents() {
+	torrents := d.getFinished()
+
+	for _, dt := range torrents {
+		p("torrent finished: %s", dt.name)
+		e := dt.pause()
+		if e != nil {
+			p(e.Error())
+			continue
+		}
+		_, e = dt.remove()
+		chk(e)
+		dt.moveFiles()
+	}
+	rmEmptyFolders(d.doneFolder)
+}
+func (d *Deluge) linkFinishedTorrents() {
+	var fin []string
+	torrents := d.getFinished()
+	if len(torrents) > 0 {
+		p("found %d finished torrents", len(torrents))
+	}
+	for _, dt := range torrents {
+		if isAny(dt.name, d.finished...) {
+			fin = append(fin, dt.name)
+			continue
+		}
+		p("torrent finished: %s", dt.name)
+		e := dt.linkFiles()
+		chkFatal(e)
+		e = dt.moveStorage()
+		chkFatal(e)
+		fin = append(fin, dt.name)
+	}
+	d.finished = fin
+}
+func (d *Deluge) recheckErrors() {
+	errs := d.getErrors()
+	for _, t := range errs {
+		e := d.ForceRecheck(t.id)
+		chk(e)
+		checking := true
+		var lastState string
+		for checking {
+			st, e := d.TorrentStatus(t.id)
+			chk(e)
+			state := delugeclient.TorrentState(st.state)
+			if state != delugeclient.StateChecking && state != delugeclient.StateError {
+				p("Torrent recheck for %s complete. State is now %s", st.name, st.state)
+				checking = false
+			} else {
+				msg := fmt.Sprintf("Torrent state for %s is %s", st.name, st.state)
+				if msg != lastState {
+					lastState = msg
+					p(msg)
+				}
+			}
+
+			time.Sleep(3 * time.Second)
+		}
+	}
+}
+
 type DelugeTorrent struct {
 	name, id, relPath  string
 	state, savePath    string
@@ -48,11 +428,11 @@ type DelugeTorrent struct {
 
 func (dt *DelugeTorrent) pause() error {
 	p("pausing torrent %s", dt.name)
-	return dt.deluge.client.PauseTorrents(dt.id)
+	return dt.deluge.PauseTorrents(dt.id)
 }
 func (dt *DelugeTorrent) remove() (bool, error) {
 	p("removing torrent %s", dt.name)
-	return dt.deluge.client.RemoveTorrent(dt.id, false)
+	return dt.deluge.RemoveTorrent(dt.id, false)
 }
 func (dt *DelugeTorrent) moveFiles() {
 	p("moving %d files from torrent %s", len(dt.files), dt.name)
@@ -88,283 +468,7 @@ func (dt *DelugeTorrent) linkFiles() error {
 }
 func (dt *DelugeTorrent) moveStorage() error {
 	p("move torrent to new storage location: %s -> %s", dt.name, dt.deluge.seedFolder)
-	return dt.deluge.client.MoveStorage([]string{dt.id}, dt.deluge.seedFolder)
-}
-
-type Deluge struct {
-	name, ip, user, pass                   string
-	doneFolder, seedFolder, downloadFolder string
-	trackers                               []string
-	port                                   uint
-	keepDone                               bool
-	keepRatio                              float32
-	keepTime                               int64
-	client                                 *delugeclient.Client
-	stuckDl                                map[string]int
-	stuckSeeds                             map[string]int
-	finished                               []string
-}
-
-func (d *Deluge) open() bool {
-	p("opening connection to daemon %s", d.name)
-	e := d.client.Connect()
-	if e != nil {
-		chk(e)
-		return false
-	}
-	return true
-}
-func (d *Deluge) close() {
-	e := d.client.Close()
-	chk(e)
-}
-func (d *Deluge) verifyOpen() bool {
-	_, e := d.client.DaemonVersion()
-	if e != nil {
-		chk(e)
-		//d.close()
-		return d.open()
-	}
-	return true
-}
-func (d *Deluge) getTorrents() []DelugeTorrent {
-	var torrents []DelugeTorrent
-	if !d.verifyOpen() {
-		return torrents
-	}
-	tors, e := d.client.TorrentsStatus(delugeclient.StateUnspecified, nil)
-	if e != nil && !strings.Contains(e.Error(), `field "ETA"`) {
-		chk(e)
-	}
-	for k, v := range tors {
-		var dt DelugeTorrent
-		dt.id = k
-		dt.name = v.Name
-		dt.seedTime = v.SeedingTime
-		dt.ratio = v.Ratio
-		dt.deluge = d
-		dt.state = v.State
-		dt.savePath = v.SavePath
-		dt.isFinished = v.IsFinished
-		dt.isSeed = v.IsSeed
-		dt.progress = v.Progress
-		var files []string
-		for _, f := range v.Files {
-			files = append(files, filepath.Join(v.SavePath, f.Path))
-		}
-		dt.files = files
-
-		if len(v.Files) > 0 {
-			path := v.Files[0].Path
-			if strings.Contains(path, "/") {
-				dt.relPath = strings.SplitN(path, "/", 2)[0]
-			}
-		}
-
-		torrents = append(torrents, dt)
-	}
-
-	return torrents
-}
-func (d *Deluge) getFinished() []DelugeTorrent {
-	var fin []DelugeTorrent
-	for _, t := range d.getTorrents() {
-		if t.isSeed && t.isFinished && t.state == "Seeding" && t.progress == 100 && t.savePath == d.doneFolder {
-			fin = append(fin, t)
-		}
-	}
-	return fin
-}
-func (d *Deluge) getErrors() []DelugeTorrent {
-	var errs []DelugeTorrent
-	for _, t := range d.getTorrents() {
-		if t.state == "Error" {
-			errs = append(errs, t)
-		}
-	}
-	return errs
-}
-func (d *Deluge) getChecking() []DelugeTorrent {
-	var errs []DelugeTorrent
-	for _, t := range d.getTorrents() {
-		if strings.Contains(t.state, "Checking") {
-			errs = append(errs, t)
-		}
-	}
-	return errs
-}
-
-func (d *Deluge) getClient() {
-	d.client = delugeclient.NewV1(delugeclient.Settings{
-		Port: d.port, Login: d.user, Password: d.pass, Hostname: d.ip,
-	})
-	d.stuckDl = make(map[string]int)
-	d.stuckSeeds = make(map[string]int)
-	d.open()
-
-}
-func (d *Deluge) checkStuckTorrents() {
-	//if !d.open() {
-	//	return
-	//}
-	//defer d.close()
-	if !d.verifyOpen() {
-		return
-	}
-
-	tors, e := d.client.TorrentsStatus(delugeclient.StateUnspecified, nil)
-	if e != nil && !strings.Contains(e.Error(), `field "ETA"`) {
-		chk(e)
-	}
-	for k, v := range tors {
-		if v.State == "Downloading" && v.Progress == 100 {
-			n := d.stuckDl[k]
-			n = n + 1
-			d.stuckDl[k] = n
-			if n >= 3 {
-				delete(d.stuckDl, k)
-				e = d.client.ForceRecheck(k)
-				chk(e)
-			}
-		}
-		if v.State == "Seeding" && v.Progress == 100 && v.SavePath == d.downloadFolder {
-			n := d.stuckSeeds[k]
-			n = n + 1
-			d.stuckSeeds[k] = n
-			if n >= 3 {
-				delete(d.stuckSeeds, k)
-				e = d.client.MoveStorage([]string{k}, d.doneFolder)
-				chk(e)
-			}
-		}
-	}
-}
-func (d *Deluge) removeFinishedTorrents() {
-	//if !d.open() {
-	//	return
-	//}
-	//defer d.close()
-	if !d.verifyOpen() {
-		return
-	}
-	torrents := d.getFinished()
-
-	for _, dt := range torrents {
-		p("torrent finished: %s", dt.name)
-		e := dt.pause()
-		if e != nil {
-			p(e.Error())
-			continue
-		}
-		_, e = dt.remove()
-		chk(e)
-		dt.moveFiles()
-	}
-	rmEmptyFolders(d.doneFolder)
-}
-func (d *Deluge) linkFinishedTorrents() {
-	var fin []string
-	//p("attempting linkFinishedTorrents")
-	if !d.verifyOpen() {
-		p("failed on verify open to deluge daemon %s", d.name)
-		return
-	}
-	torrents := d.getFinished()
-	if len(torrents) > 0 {
-		p("found %d finished torrents", len(torrents))
-	}
-	for _, dt := range torrents {
-		if isAny(dt.name, d.finished...) {
-			fin = append(fin, dt.name)
-			continue
-		}
-
-		p("torrent finished: %s", dt.name)
-		e := dt.linkFiles()
-		chkFatal(e)
-		e = dt.moveStorage()
-		chkFatal(e)
-		fin = append(fin, dt.name)
-	}
-	d.finished = fin
-
-}
-
-func (d *Deluge) recheckErrors() {
-	errs := d.getErrors()
-	for _, t := range errs {
-		e := d.client.ForceRecheck(t.id)
-		chk(e)
-		checking := true
-		for checking {
-			st, e := d.client.TorrentStatus(t.id)
-			chk(e)
-			if st.State != "Checking" && st.State != "Error" {
-				p("state not Checking, it is: %s", st.State)
-				checking = false
-			}
-
-			time.Sleep(3 * time.Second)
-		}
-	}
-}
-
-func (d *Deluge) checkFinishedTorrents() {
-	if d.keepDone && !isSnapraidRunning() {
-		d.linkFinishedTorrents()
-	} else {
-		d.removeFinishedTorrents()
-	}
-
-}
-func (d *Deluge) addMagnet(magnetPath string) {
-	//if !d.open() {
-	//	return
-	//}
-	//defer d.close()
-	if !d.verifyOpen() {
-		return
-	}
-	p("adding magnet file to %s: %s", d.name, magnetPath)
-	f, e := os.ReadFile(magnetPath)
-	chkFatal(e)
-	mag := string(f)
-	hash, e := d.client.AddTorrentMagnet(mag, nil)
-	if e != nil {
-		p("add magnet file failed: %s", e.Error())
-	} else {
-		p("add magnet file successful: %s", hash)
-		rec := strings.Replace(magnetPath, torFolder, recycleFolder, 1)
-		rec = getAltPath(rec)
-		e = os.Rename(magnetPath, rec)
-		chkFatal(e)
-	}
-
-}
-func (d *Deluge) addTorrent(torrentPath string) {
-	//if !d.open() {
-	//	return
-	//}
-	//defer d.close()
-	if !d.verifyOpen() {
-		return
-	}
-	p("adding torrent file to %s: %s", d.name, torrentPath)
-	t, e := os.ReadFile(torrentPath)
-	chkFatal(e)
-	encoded := base64.StdEncoding.EncodeToString(t)
-	fName := filepath.Base(torrentPath)
-	hash, e := d.client.AddTorrentFile(fName, encoded, nil)
-	if e != nil {
-		p("add torrent file failed: %s", e.Error())
-	} else {
-		p("add torrent file successful: %s", hash)
-		rec := strings.Replace(torrentPath, torFolder, recycleFolder, 1)
-		rec = getAltPath(rec)
-		e = os.Rename(torrentPath, rec)
-		chkFatal(e)
-	}
-
+	return dt.deluge.MoveStorage([]string{dt.id}, dt.deluge.seedFolder)
 }
 
 func parseConfig() {
@@ -476,7 +580,7 @@ func parseConfig() {
 }
 func getDelugeClients() {
 	for _, d := range delugeDaemons {
-		d.getClient()
+		d.start()
 	}
 }
 
@@ -520,12 +624,11 @@ func (tf *TorFile) magnet(magnetPath string) {
 	mag := string(b)
 	for _, dd := range delugeDaemons {
 		if containsString(mag, dd.trackers...) {
-			dd.addMagnet(magnetPath)
+			dd.AddTorrentMagnet(magnetPath)
 			return
 		}
 	}
-	defaultDeluge.addMagnet(magnetPath)
-
+	defaultDeluge.AddTorrentMagnet(magnetPath)
 }
 func (tf *TorFile) torrent(torrentPath string) {
 	b, e := os.ReadFile(torrentPath)
@@ -533,11 +636,11 @@ func (tf *TorFile) torrent(torrentPath string) {
 	mag := string(b)
 	for _, dd := range delugeDaemons {
 		if containsString(mag, dd.trackers...) {
-			dd.addTorrent(torrentPath)
+			dd.AddTorrentFile(torrentPath)
 			return
 		}
 	}
-	defaultDeluge.addTorrent(torrentPath)
+	defaultDeluge.AddTorrentFile(torrentPath)
 }
 
 func extractPreProc() {
@@ -590,12 +693,6 @@ func pruneTorrents() {
 		p("checking for torrents to prune")
 		for _, d := range delugeDaemons {
 			if d.keepDone {
-				//if !d.open() {
-				//	continue
-				//}
-				if !d.verifyOpen() {
-					continue
-				}
 				torrents := d.getFinished()
 				for _, t := range torrents {
 					if t.seedTime > d.keepTime || t.ratio > d.keepRatio {
@@ -604,7 +701,6 @@ func pruneTorrents() {
 						chkFatal(e)
 					}
 				}
-				//d.close()
 			}
 		}
 		time.Sleep(6 * time.Hour)
