@@ -390,30 +390,38 @@ func (d *Deluge) linkFinishedTorrents() {
 	d.finished = fin
 }
 func (d *Deluge) recheckErrors() {
+	p("started checking for torrents in error state in daemon %s", d.name)
+
 	errs := d.getErrors()
 	for _, t := range errs {
-		e := d.ForceRecheck(t.id)
+		st, e := d.TorrentStatus(t.id)
 		chk(e)
-		checking := true
-		var lastState string
-		for checking {
-			st, e := d.TorrentStatus(t.id)
+		state := delugeclient.TorrentState(st.state)
+		if state == delugeclient.StateError {
+			e := d.ForceRecheck(t.id)
 			chk(e)
-			state := delugeclient.TorrentState(st.state)
-			if state != delugeclient.StateChecking && state != delugeclient.StateError {
-				p("Torrent recheck for %s complete. State is now %s", st.name, st.state)
-				checking = false
-			} else {
-				msg := fmt.Sprintf("Torrent state for %s is %s", st.name, st.state)
-				if msg != lastState {
-					lastState = msg
-					p(msg)
+			checking := true
+			var lastState string
+			for checking {
+				st, e := d.TorrentStatus(t.id)
+				chk(e)
+				state := delugeclient.TorrentState(st.state)
+				if state != delugeclient.StateChecking && state != delugeclient.StateError {
+					p("Torrent recheck for %s complete. State is now %s", st.name, st.state)
+					checking = false
+				} else {
+					msg := fmt.Sprintf("Torrent state for %s is %s", st.name, st.state)
+					if msg != lastState {
+						lastState = msg
+						p(msg)
+					}
 				}
-			}
 
-			time.Sleep(3 * time.Second)
+				time.Sleep(3 * time.Second)
+			}
 		}
 	}
+	p("finished checking for torrents in error state in daemon %s", d.name)
 }
 
 type DelugeTorrent struct {
