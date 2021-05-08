@@ -25,6 +25,7 @@ import (
 
 	- this is not run as a container, but installed onto the host system as a systemd service
 	- will not run while snapraid is active
+	- will not run more than one instance of itself
 
 	service depends on
 		mnt-ssd01.mount
@@ -100,10 +101,11 @@ func moveOldFiles() {
 		for i, src := range files {
 			dst := strings.Replace(src, ssd, array, 1)
 			p("%d/%d moving file: %s -> %s", i+1, numFile, ssd, dst)
-			err = os.MkdirAll(filepath.Dir(dst), 0777)
+			err = mvFile(src, dst)
+			//err = os.MkdirAll(filepath.Dir(dst), 0777)
 			chkFatal(err)
-			e := run("rsync", "-aWmvh", "--preallocate", "--remove-source-files", src, dst)
-			chkFatal(e)
+			//e := run("rsync", "-aWmvh", "--preallocate", "--remove-source-files", src, dst)
+			//chkFatal(e)
 		}
 		p("removing empty folders on %s", ssd)
 		rmEmptyFolders(ssd)
@@ -167,4 +169,5 @@ var (
 	rmEmptyFolders = base.RmEmptyFolders
 	isAny          = base.IsAny
 	arrayIdx       = base.ArrayIdx
+	mvFile         = base.MvFile
 )

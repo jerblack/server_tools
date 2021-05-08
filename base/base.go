@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/mitchellh/colorstring"
 	"github.com/schollz/progressbar/v3"
 	"io"
 	"os"
@@ -198,7 +197,7 @@ func MvFile(src, dst string) error {
 
 	bar := progressbar.NewOptions64(st.Size(),
 		progressbar.OptionSpinnerType(14),
-		progressbar.OptionSetDescription(fmt.Sprintf("[bold][light_magenta] %s  [reset]", dst)),
+		progressbar.OptionSetDescription(fmt.Sprintf("[bold][light_magenta] %s  [reset]", filepath.Base(dst))),
 		progressbar.OptionShowBytes(true),
 		progressbar.OptionSetPredictTime(false),
 		progressbar.OptionShowCount(),
@@ -228,7 +227,6 @@ func MvFile(src, dst string) error {
 	if e != nil {
 		return e
 	}
-	bar.Finish()
 	e = in.Close()
 	if e != nil {
 		return e
@@ -246,7 +244,6 @@ func MvFile(src, dst string) error {
 		return e
 	}
 	bar.Clear()
-	colorstring.Fprintf(os.Stderr, "\r[bold][light_magenta] moved '%s' to '%s'[reset]\n", src, dst)
 	return nil
 }
 
