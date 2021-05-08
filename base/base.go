@@ -237,8 +237,6 @@ func MvFile(src, dst string) error {
 	if e != nil {
 		return e
 	}
-	bar.Clear()
-	colorstring.Fprintf(os.Stderr, "\r[bold][light_magenta] moved '%s' to '%s'[reset]\n", src, dst)
 	e = os.Chmod(dst, st.Mode())
 	if e != nil {
 		return e
@@ -247,6 +245,8 @@ func MvFile(src, dst string) error {
 	if e != nil {
 		return e
 	}
+	bar.Clear()
+	colorstring.Fprintf(os.Stderr, "\r[bold][light_magenta] moved '%s' to '%s'[reset]\n", src, dst)
 	return nil
 }
 
