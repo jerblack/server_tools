@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/mitchellh/colorstring"
+	"github.com/schollz/progressbar/v3"
 	"io"
 	"os"
 	"os/exec"
@@ -192,6 +194,26 @@ func MvFile(src, dst string) error {
 	if !strings.Contains(e.Error(), "invalid cross-device link") {
 		return e
 	}
+	st, _ := os.Stat(src)
+
+	bar := progressbar.NewOptions64(st.Size(),
+		progressbar.OptionSpinnerType(14),
+		progressbar.OptionSetDescription(fmt.Sprintf("[bold][light_magenta] %s  [reset]", dst)),
+		progressbar.OptionShowBytes(true),
+		progressbar.OptionSetPredictTime(false),
+		progressbar.OptionShowCount(),
+		progressbar.OptionClearOnFinish(),
+		progressbar.OptionFullWidth(),
+		progressbar.OptionOnCompletion(func() {}),
+		progressbar.OptionEnableColorCodes(true),
+		progressbar.OptionThrottle(100*time.Millisecond),
+		progressbar.OptionUseANSICodes(true),
+		progressbar.OptionSetTheme(progressbar.Theme{
+			Saucer:        "[magenta]█[reset]",
+			SaucerHead:    "[light_magenta]█[reset]",
+			SaucerPadding: "[_blue_] [reset]",
+		}))
+	bar.RenderBlank()
 
 	in, e := os.Open(src)
 	if e != nil {
@@ -202,10 +224,11 @@ func MvFile(src, dst string) error {
 		return e
 	}
 	defer out.Close()
-	_, e = io.Copy(out, in)
+	_, e = io.Copy(io.MultiWriter(out, bar), in)
 	if e != nil {
 		return e
 	}
+	bar.Finish()
 	e = in.Close()
 	if e != nil {
 		return e
@@ -214,10 +237,8 @@ func MvFile(src, dst string) error {
 	if e != nil {
 		return e
 	}
-	st, e := os.Stat(src)
-	if e != nil {
-		return e
-	}
+	bar.Clear()
+	colorstring.Fprintf(os.Stderr, "\r[bold][light_magenta] moved '%s' to '%s'[reset]\n", src, dst)
 	e = os.Chmod(dst, st.Mode())
 	if e != nil {
 		return e
