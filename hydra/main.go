@@ -78,6 +78,7 @@ func (d *Deluge) start() {
 	d.stuckSeeds = make(map[string]int)
 	d.cmd = make(chan DelugeCommand, 1)
 	d.response = make(chan DelugeResponse, 1)
+	//p("deluge daemon %s is marked as keep_finished: %t", d.name, d.keepDone)
 	go d.handler()
 	d.open()
 
@@ -145,7 +146,10 @@ func (d *Deluge) parseTorrent(id string, t *delugeclient.TorrentStatus) DelugeTo
 	var dt DelugeTorrent
 	dt.id = id
 	dt.name = t.Name
-	dt.seedTime = t.SeedingTime
+	dt.timeSeeded = t.SeedingTime
+	dt.timeAdded = t.TimeAdded
+	dt.timeActive = t.ActiveTime
+	dt.timeCompleted = t.CompletedTime
 	dt.ratio = t.Ratio
 	dt.deluge = d
 	dt.state = t.State
@@ -347,10 +351,14 @@ func (d *Deluge) checkStuckTorrents() {
 	}
 }
 func (d *Deluge) checkFinishedTorrents() {
-	if d.keepDone && !isSnapraidRunning() {
-		d.linkFinishedTorrents()
+	if !isSnapraidRunning() {
+		if d.keepDone {
+			d.linkFinishedTorrents()
+		} else {
+			d.removeFinishedTorrents()
+		}
 	} else {
-		d.removeFinishedTorrents()
+		//p("snapraid is running. not removing finished torrents for now.")
 	}
 }
 func (d *Deluge) removeFinishedTorrents() {
@@ -390,9 +398,10 @@ func (d *Deluge) linkFinishedTorrents() {
 	d.finished = fin
 }
 func (d *Deluge) recheckErrors() {
-	p("started checking for torrents in error state in daemon %s", d.name)
-
 	errs := d.getErrors()
+	if len(errs) > 0 {
+		p("found %d torrents in error state on deluge %s. forcing recheck now.", len(errs), d.name)
+	}
 	for _, t := range errs {
 		st, e := d.TorrentStatus(t.id)
 		chk(e)
@@ -421,17 +430,20 @@ func (d *Deluge) recheckErrors() {
 			}
 		}
 	}
-	p("finished checking for torrents in error state in daemon %s", d.name)
+	if len(errs) > 0 {
+		p("finished recheck on %d torrents in error state on deluge %s.", len(errs), d.name)
+	}
 }
 
 type DelugeTorrent struct {
-	name, id, relPath  string
-	state, savePath    string
-	seedTime           int64
-	ratio, progress    float32
-	files              []string
-	deluge             *Deluge
-	isSeed, isFinished bool
+	name, id, relPath                     string
+	state, savePath                       string
+	timeSeeded, timeActive, timeCompleted int64
+	timeAdded                             float32
+	ratio, progress                       float32
+	files                                 []string
+	deluge                                *Deluge
+	isSeed, isFinished                    bool
 }
 
 func (dt *DelugeTorrent) pause() error {
@@ -687,8 +699,8 @@ func muxConvert() {
 }
 func recheckErrors() {
 	time.Sleep(30 * time.Second)
+	p("starting errored torrents monitor")
 	for {
-		p("checking for torrents in error state")
 		for _, d := range delugeDaemons {
 			d.recheckErrors()
 		}
@@ -697,20 +709,23 @@ func recheckErrors() {
 }
 func pruneTorrents() {
 	time.Sleep(20 * time.Second)
+	p("starting prune torrents monitor")
 	for {
-		p("checking for torrents to prune")
-		for _, d := range delugeDaemons {
-			if d.keepDone {
-				torrents := d.getFinished()
-				for _, t := range torrents {
-					if t.seedTime > d.keepTime || t.ratio > d.keepRatio {
-						p("torrent %s being renamed from %s with ratio %f and seed time of %d days", t.name, d.name, t.ratio, t.seedTime/60/60/24)
-						_, e := t.remove()
-						chkFatal(e)
+		if !isSnapraidRunning() {
+			for _, d := range delugeDaemons {
+				if d.keepDone {
+					torrents := d.getTorrents()
+					for _, t := range torrents {
+						if t.timeSeeded > d.keepTime || (t.ratio > d.keepRatio && d.keepRatio != 0) {
+							p("torrent %s being removed from %s with ratio %f and seed time of %d days", t.name, d.name, t.ratio, t.timeSeeded/60/60/24)
+							_, e := t.remove()
+							chkFatal(e)
+						}
 					}
 				}
 			}
 		}
+
 		time.Sleep(6 * time.Hour)
 	}
 }
