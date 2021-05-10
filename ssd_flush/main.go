@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/jerblack/server_tools/base"
+	. "github.com/jerblack/server_tools/base"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -47,6 +47,7 @@ var (
 
 	moveAge = 1  // hours
 	force   bool // for -f arg to ignore create time and just flush everything
+	logFile = fmt.Sprintf("/var/server_logs/ssd_flush-%s.log", getTimestamp())
 )
 
 func isSnapraidRunning() bool {
@@ -67,7 +68,7 @@ func timeToMove(info os.FileInfo) bool {
 	return time.Since(ctime) > time.Duration(moveAge)*time.Hour
 }
 
-func moveOldFiles() {
+func moveOldFiles() error {
 	var files []string
 	var folders []string
 	walk := func(p string, info os.FileInfo, err error) error {
@@ -96,20 +97,26 @@ func moveOldFiles() {
 			folder = strings.Replace(folder, ssd, array, 1)
 			p("%d/%d creating folder: %s", i, numFolder, folder)
 			err = os.MkdirAll(folder, 0777)
-			chkFatal(err)
+			if err != nil {
+				return err
+			}
 		}
 		for i, src := range files {
 			dst := strings.Replace(src, ssd, array, 1)
 			p("%d/%d moving file: %s -> %s", i+1, numFile, ssd, dst)
 			err = mvFile(src, dst)
+			if err != nil {
+				return err
+			}
+
 			//err = os.MkdirAll(filepath.Dir(dst), 0777)
-			chkFatal(err)
 			//e := run("rsync", "-aWmvh", "--preallocate", "--remove-source-files", src, dst)
 			//chkFatal(e)
 		}
 		p("removing empty folders on %s", ssd)
 		rmEmptyFolders(ssd)
 	}
+	return nil
 }
 
 func getArgs() {
@@ -149,25 +156,45 @@ func getArgs() {
 }
 
 func main() {
+	fn := logOutput(logFile)
 	if isSnapraidRunning() {
 		p("snapraid is running. exiting.")
 		return
 	}
 	if amIRunning() {
-		p("ssd_slush is already running. exiting.")
+		p("ssd_flush is already running. exiting.")
 		return
 	}
 	getArgs()
-	moveOldFiles()
+
+	err := moveOldFiles()
+	fn()
+	if err != nil {
+		b, e := os.ReadFile(logFile)
+		if e != nil {
+			p("error during log read for email: %s", e.Error())
+			return
+		}
+		email := Email{
+			Subject: fmt.Sprintf("ssd_flush error: %s", filepath.Base(logFile)),
+			Body:    string(b),
+		}
+		e = email.Send()
+		if e != nil {
+			p("error during email send: %s", e.Error())
+		}
+	}
 }
 
 var (
-	p              = base.P
-	chk            = base.Chk
-	chkFatal       = base.ChkFatal
-	run            = base.Run
-	rmEmptyFolders = base.RmEmptyFolders
-	isAny          = base.IsAny
-	arrayIdx       = base.ArrayIdx
-	mvFile         = base.MvFile
+	p              = P
+	chk            = Chk
+	chkFatal       = ChkFatal
+	run            = Run
+	rmEmptyFolders = RmEmptyFolders
+	isAny          = IsAny
+	arrayIdx       = ArrayIdx
+	mvFile         = MvFile
+	logOutput      = LogOutput
+	getTimestamp   = GetTimestamp
 )
