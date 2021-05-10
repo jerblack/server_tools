@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/go-gomail/gomail"
 	"github.com/schollz/progressbar/v3"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -248,7 +251,7 @@ func MvFile(src, dst string) error {
 }
 
 func MvTree(src, dst string, removeEmpties bool) {
-	P("moving tree %s to %s", src, dst)
+	P("moving tree %s To %s", src, dst)
 	var files []string
 	var folders []string
 	walk := func(p string, info os.FileInfo, err error) error {
@@ -276,7 +279,7 @@ func MvTree(src, dst string, removeEmpties bool) {
 	for _, f := range files {
 		dstFile := strings.Replace(f, src, dst, 1)
 		dstFile = GetAltPath(dstFile)
-		P("moving file to %s", dstFile)
+		P("moving file To %s", dstFile)
 		renErr := os.Rename(f, dstFile)
 		ChkFatal(renErr)
 
@@ -289,4 +292,82 @@ func MvTree(src, dst string, removeEmpties bool) {
 func FileExists(f string) bool {
 	_, e := os.Stat(f)
 	return e == nil
+}
+
+func GetTimestamp() string {
+	return time.Now().Format("20060102-150105")
+}
+
+func LogOutput(logfile string) func() {
+	// open file read/write | create if not exist | clear file at open if exists
+	f, _ := os.OpenFile(logfile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+
+	// save existing stdout | MultiWriter writes to saved stdout and file
+	out := os.Stdout
+	mw := io.MultiWriter(out, f)
+
+	// get pipe reader and writer | writes to pipe writer come out pipe reader
+	r, w, _ := os.Pipe()
+
+	// replace stdout,stderr with pipe writer | all writes to stdout, stderr will go through pipe instead (fmt.print, log)
+	os.Stdout = w
+	os.Stderr = w
+
+	// writes with log.Print should also write to mw
+	log.SetOutput(mw)
+
+	//create channel to control exit | will block until all copies are finished
+	exit := make(chan bool)
+
+	go func() {
+		// copy all reads from pipe to multiwriter, which writes to stdout and file
+		_, _ = io.Copy(mw, r)
+		// when r or w is closed copy will finish and true will be sent to channel
+		exit <- true
+	}()
+
+	// function to be deferred in main until program exits
+	return func() {
+		// close writer then block on exit channel | this will let mw finish writing before the program exits
+		_ = w.Close()
+		<-exit
+		// close file after all writes have finished
+		_ = f.Close()
+	}
+
+}
+
+type Email struct {
+	To          string
+	Subject     string
+	Body        string
+	Attachments []string
+}
+
+func (e *Email) Send() error {
+	if e.To == "" {
+		e.To = os.Getenv("ALERT_EMAIL")
+	}
+	b, err := os.ReadFile("/etc/sendmail")
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(string(b), "\n")
+	server, portStr, user, pass := lines[0], lines[1], lines[2], lines[3]
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return err
+	}
+
+	m := gomail.NewMessage()
+	m.SetHeader("From", e.To)
+	m.SetHeader("To", e.To)
+	m.SetHeader("Subject", e.Subject)
+	m.SetBody("text/plain", e.Body)
+	for _, attach := range e.Attachments {
+		m.Attach(attach)
+	}
+	d := gomail.NewDialer(server, port, user, pass)
+	err = d.DialAndSend(m)
+	return err
 }
