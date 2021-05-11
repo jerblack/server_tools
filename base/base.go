@@ -197,15 +197,19 @@ func MvFile(src, dst string) error {
 		return e
 	}
 	st, _ := os.Stat(src)
+	if !logToFile {
+		mwNoFile = os.Stdout
+	}
 
 	bar := progressbar.NewOptions64(st.Size(),
+		progressbar.OptionSetWriter(mwNoFile),
 		progressbar.OptionSpinnerType(14),
 		progressbar.OptionSetDescription(fmt.Sprintf("[bold][light_magenta] %s  [reset]", filepath.Base(dst))),
 		progressbar.OptionShowBytes(true),
 		progressbar.OptionSetPredictTime(false),
 		progressbar.OptionShowCount(),
 		progressbar.OptionClearOnFinish(),
-		progressbar.OptionFullWidth(),
+		progressbar.OptionSetWidth(60),
 		progressbar.OptionOnCompletion(func() {}),
 		progressbar.OptionEnableColorCodes(true),
 		progressbar.OptionThrottle(100*time.Millisecond),
@@ -298,13 +302,19 @@ func GetTimestamp() string {
 	return time.Now().Format("20060102-150105")
 }
 
+var logToFile bool
+var mwNoFile io.Writer
+
 func LogOutput(logfile string) func() {
+	logToFile = true
 	// open file read/write | create if not exist | clear file at open if exists
 	f, _ := os.OpenFile(logfile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 
 	// save existing stdout | MultiWriter writes to saved stdout and file
 	out := os.Stdout
-	mw := io.MultiWriter(out, f)
+	mwNoFile = io.MultiWriter(out)
+	mwFile := io.MultiWriter(f)
+	mw := io.MultiWriter(mwFile, mwNoFile)
 
 	// get pipe reader and writer | writes to pipe writer come out pipe reader
 	r, w, _ := os.Pipe()
