@@ -1,0 +1,12 @@
+# lives in /lib/systemd/system/snapraid_mgr.timer
+
+[Unit]
+Description=Periodically runs the snapraid_mgr service
+
+[Timer]
+Unit=snapraid_mgr.service
+# daily at 8am
+OnCalendar=*-*-* 08:00:00
+
+[Install]
+WantedBy=multi-user.target

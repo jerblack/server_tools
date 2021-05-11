@@ -1,12 +1,8 @@
-TODO: MOVIE_SORTER (m)
-
 TODO: MUX: move recycle reference to switch and use switch in hydra
 
 TODO: HYDRA: add conf option to auto-delete torrents after x days unfinished & mark in sonarr as dead
 
 TODO: DUPER: index files deterministically
-
-TODO: SNAPRAID : automate snapraid sync, snapraid scrub
 
 TODO: YOUTUBE_DOWNLOADER : build, get existing ids, KODI integration for mark played and delete current
 

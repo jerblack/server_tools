@@ -1,0 +1,28 @@
+snapraid sync running daily
+everyday at 8am
+
+startup process
+    stop sonarr container
+        systemctl stop sonarr.service
+    is ssd_flush running?
+        wait to complete
+    ssd_flush -f
+        wait to complete
+    verify
+        all drives in snapraid.conf are accessible
+        all content files in snapraid.conf are accessible
+        all parity drives are accessible
+        fail and email if not
+    snapraid sync
+        wait to complete
+        save stdout to logfile at /var/server_logs/snapraid_sync_<date>.log
+        only keep last 10 logs
+        email contents of log to me
+    snapraid scrub
+        wait to complete
+        save stdout to logfile at /var/server_logs/snapraid_scrub_<date>.log
+        only keep last 10 logs
+        email contents of log to me
+    start sonarr container
+        systemctl start sonarr.service
+
