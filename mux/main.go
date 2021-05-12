@@ -405,6 +405,9 @@ func (j *Job) start() {
 		j.convertStreams()
 		j.buildCmdLine()
 		j.runJob()
+	} else if moveFinished {
+		p("-mf is set, moving file to '%s'", moveFinishedPath)
+		j.move(moveFinishedPath)
 	}
 }
 
@@ -592,7 +595,7 @@ func (j *Job) convertStreams() {
 		}
 	}
 	for _, s := range j.streams {
-		if s.convert {
+		if s.convert && !s.converted {
 			cmd = []string{"ffmpeg", "-hide_banner", "-loglevel", "warning", "-stats", "-y",
 				"-i", j.video, "-map", fmt.Sprintf("0:%d", s.Index)}
 
@@ -621,6 +624,7 @@ func (j *Job) convertStreams() {
 			printCmd(cmd)
 			err := run(cmd...)
 			chkFatal(err)
+			s.converted = true
 		}
 	}
 }
@@ -1031,6 +1035,7 @@ type FfprobeStreams struct {
 type Stream struct {
 	Index            int `json:"index"`
 	convert          bool
+	converted        bool
 	subFile          string
 	elementaryStream string
 	Width            int    `json:"width"`
