@@ -1,10 +1,14 @@
 TODO: MUX: move recycle reference to switch and use switch in hydra
+TODO: MUX: watch remote folder, move new files into work path, convert, move to new target with rel path
 
 TODO: HYDRA: add conf option to auto-delete torrents after x days unfinished & mark in sonarr as dead
+TODO: HYDRA: check for and unpause paused torrents
 
 TODO: DUPER: index files deterministically
 
-TODO: YOUTUBE_DOWNLOADER : build, get existing ids, KODI integration for mark played and delete current
+TODO: YT : build, monitor failures, auto retry, log failed
+TODO: KODI remote : web, play/pause/skip forward/stop/delete current
+TODO: KODI remote : auto move last played to .played subfolder on change
 
 -- wait for more info --
 TODO: HYDRA: move files from sab folder to pre-proc if not picked up by sonarr after x time

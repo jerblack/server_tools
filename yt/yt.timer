@@ -1,0 +1,11 @@
+# lives in /lib/systemd/system/yt.timer
+
+[Unit]
+Description=Periodically runs the yt service
+
+[Timer]
+OnCalendar=Mon,Thur 6:00:00
+Unit=yt.service
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,74 @@
+https://github.com/ytdl-org/youtube-dl
+
+sudo curl -L https://yt-dl.org/downloads/latest/youtube-dl -o /usr/bin/youtube-dl
+sudo chmod a+rx /usr/bin/youtube-dl
+
+-- prelim
+Paul Dinning
+https://www.youtube.com/playlist?list=UUPJXfmxMYAoH02CFudZxmgg
+last video | 2021-02-16 | sHlwV-EMZs0
+get existing
+youtube-dl --get-id --datebefore 20210216 https://www.youtube.com/playlist?list=UUPJXfmxMYAoH02CFudZxmgg > dinning.yt
+
+Handsome Nature
+https://www.youtube.com/playlist?list=UUJLIwYrmwgwbTzgmB5yVc7Q
+last video | 2021-02-18 | B6r0K7y_ipc
+youtube-dl --get-id --datebefore 20210218 https://www.youtube.com/playlist?list=UUJLIwYrmwgwbTzgmB5yVc7Q > handsome.yt
+
+youtube-dl switches
+-U, --update                         Update this program to latest version.
+                                     Make sure that you have sufficient
+                                     permissions (run with sudo if needed)
+--download-archive FILE              Download only videos not listed in the
+                                     archive file. Record the IDs of all
+                                     downloaded videos in it.
+--flat-playlist                      Do not extract the videos of a
+                                     playlist, only list them.
+--playlist-start NUMBER              Playlist video to start at (default is
+                                     1)
+--playlist-end NUMBER                Playlist video to end at (default is
+                                     last)
+--playlist-items ITEM_SPEC           Playlist video items to download.
+                                     Specify indices of the videos in the
+                                     playlist separated by commas like: "--
+                                     playlist-items 1,2,5,8" if you want to
+                                     download videos indexed 1, 2, 5, 8 in
+                                     the playlist. You can specify range: "
+                                     --playlist-items 1-3,7,10-13", it will
+                                     download the videos at index 1, 2, 3,
+                                     7, 10, 11, 12 and 13.
+--datebefore DATE                    Download only videos uploaded on or
+                                     before this date (i.e. inclusive)
+--dateafter DATE                     Download only videos uploaded on or
+                                     after this date (i.e. inclusive)
+-o, --output TEMPLATE                Output filename template, see the
+                                     "OUTPUT TEMPLATE" for all the info
+-f, --format FORMAT                  Video format code, see the "FORMAT
+                                     SELECTION" for all the info
+-F, --list-formats                   List all available formats of requested
+                                     videos
+--merge-output-format FORMAT         If a merge is required (e.g.
+                                     bestvideo+bestaudio), output to given
+                                     container format. One of mkv, mp4, ogg,
+                                     webm, flv. Ignored if no merge is
+                                     required
+--audio-format FORMAT                Specify audio format: "best", "aac",
+                                     "flac", "mp3", "m4a", "opus", "vorbis",
+                                     or "wav"; "best" by default; No effect
+                                     without -x
+--audio-quality QUALITY              Specify ffmpeg/avconv audio quality,
+                                     insert a value between 0 (better) and 9
+                                     (worse) for VBR or a specific bitrate
+                                     like 128K (default 5)
+
+
+youtube-dl --config-location /home/jeremy/ytdl.conf  https://www.youtube.com/playlist?list=UUPJXfmxMYAoH02CFudZxmgg
+
+/etc/youtube-dl.conf || ~/.config/youtube-dl/config
+-o /z/_cat_video/%(channel)s/%(upload_date)s-%(title)s\ [%(id)s].%(ext)s                                                                                                             │/dev/md0        4.0T  582G  3.2T  16% /x
+#--external-downloader curl                                                                                                                                                          │mergerfs        264T  203T   49T  81% /z
+#--external-downloader-args "-r 0-"                                                                                                                                                  │/dev/sdac1       14T   13T  381G  98% /mnt/hdd01
+--download-archive /home/jeremy/.config/yt/downloads.yt                                                                                                                              │/dev/sdag1       14T   11T  2.3T  84% /mnt/hdd02
+--restrict-filenames                                                                                                                                                                 │/dev/sdad1       14T   13T  1.1T  93% /mnt/hdd03
+-f mp4/best[height=1080]+m4a/bestaudio                                                                                                                                               │/dev/sdae1       14T   11T  2.3T  83% /mnt/hdd04
+--merge-output-format mkv
