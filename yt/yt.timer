@@ -4,8 +4,9 @@
 Description=Periodically runs the yt service
 
 [Timer]
-OnCalendar=Mon,Thur 6:00:00
+OnCalendar=Mon,Thu 06:00:00
 Unit=yt.service
+Persistent=true
 
 [Install]
 WantedBy=multi-user.target
