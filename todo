@@ -1,5 +1,10 @@
 TODO: MUX: move recycle reference to switch and use switch in hydra
+TODO: MUX: -mfa
+  -mfa	same as -mf, except files are moved in separate goroutine. If more jobs are available, next job will begin immediately
+		instead of waiting for -mf move to finish. Useful for slow network copy.
 TODO: MUX: watch remote folder, move new files into work path, convert, move to new target with rel path
+TODO: MUX: investigate message "Consider increasing the value for the 'analyzeduration' and 'probesize' options"
+TODO: MUX: -mfa -> move finished file async instead of serially like -mf
 
 TODO: HYDRA: add conf option to auto-delete torrents after x days unfinished & mark in sonarr as dead
 TODO: HYDRA: check for and unpause paused torrents
@@ -20,3 +25,39 @@ TODO: HYDRA: if progress is 100% but state is not seeding after x checks, force 
 TODO: HYDRA: if progress is 100% and state is seeding after x checks, move storage to seeding folder
 TODO: HYDRA: need to remove empty folders from torrent done folders
 TODO: HYDRA: need to verify that torrents are in done folder and not still in dl folder before removing them (MoveStorage first)
+
+---------------------
+TODO: HYDRA: auto fail stalled jobs (no cpu, no io for 3 minutes
+TODO: HYDRA: handle deluge daemon being offline gracefully.
+May 15 08:10:09 server hydra[10691]: 8.10a | opening connection to daemon public
+May 15 08:10:11 server hydra[10691]: ----------------------
+May 15 08:10:11 server hydra[10691]: dial tcp 192.168.0.99:5050: connect: connection refused
+May 15 08:10:11 server hydra[10691]: ----------------------
+May 15 08:10:11 server hydra[10691]: 8.10a | opening connection to daemon tl
+May 15 08:10:11 server hydra[10691]: ----------------------
+May 15 08:10:11 server hydra[10691]: dial tcp 192.168.0.99:5051: connect: connection refused
+May 15 08:10:11 server hydra[10691]: ----------------------
+May 15 08:10:11 server hydra[10691]: 8.10a | opening connection to daemon ipt
+May 15 08:10:11 server hydra[10691]: ----------------------
+May 15 08:10:11 server hydra[10691]: dial tcp 192.168.0.99:5052: connect: connection refused
+May 15 08:10:11 server hydra[10691]: ----------------------
+May 15 08:10:11 server hydra[10691]: 8.10a | torFile started and monitoring /x/.config/_tor_new
+May 15 08:10:14 server hydra[10691]: panic: runtime error: invalid memory address or nil pointer dereference
+May 15 08:10:14 server hydra[10691]: [signal SIGSEGV: segmentation violation code=0x1 addr=0x18 pc=0x4e2206]
+May 15 08:10:14 server hydra[10691]: goroutine 6 [running]:
+May 15 08:10:14 server hydra[10691]: bytes.(*Buffer).WriteTo(0xc00021c030, 0x0, 0x0, 0x7f6f249882b0, 0xc00021c030, 0x515c01)
+May 15 08:10:14 server hydra[10691]:         C:/Go/src/bytes/buffer.go:239 +0x86
+May 15 08:10:14 server hydra[10691]: io.copyBuffer(0x0, 0x0, 0x7073e0, 0xc00021c030, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0)
+May 15 08:10:14 server hydra[10691]:         C:/Go/src/io/io.go:405 +0x3ac
+May 15 08:10:14 server hydra[10691]: io.Copy(...)
+May 15 08:10:14 server hydra[10691]:         C:/Go/src/io/io.go:382
+May 15 08:10:14 server hydra[10691]: github.com/jerblack/go-libdeluge.(*Client).rpc(0xc00011b540, 0x6b6236, 0xb, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, ...)
+May 15 08:10:14 server hydra[10691]:         C:/Users/jeremy/go/pkg/mod/github.com/jerblack/go-libdeluge@v0.5.5-0.20210422142137-f8aa57e57d6a/delugeclient.go:340 +0x40a
+May 15 08:10:14 server hydra[10691]: github.com/jerblack/go-libdeluge.(*Client).DaemonVersion(0xc00011b540, 0xc00001c900, 0xc00006ede8, 0x1, 0x101)
+May 15 08:10:14 server hydra[10691]:         C:/Users/jeremy/go/pkg/mod/github.com/jerblack/go-libdeluge@v0.5.5-0.20210422142137-f8aa57e57d6a/delugeclient.go:584 +0x75
+May 15 08:10:14 server hydra[10691]: main.(*Deluge).verifyOpen(0xc0001461c0, 0xc0000425e8)
+May 15 08:10:14 server hydra[10691]:         C:/Users/jeremy/Google Drive/go/src/server_tools/hydra/main.go:196 +0x2e
+May 15 08:10:14 server hydra[10691]: main.(*Deluge).handler(0xc0001461c0)
+May 15 08:10:14 server hydra[10691]:         C:/Users/jeremy/Google Drive/go/src/server_tools/hydra/main.go:88 +0x106
+May 15 08:10:14 server hydra[10691]: created by main.(*Deluge).start
+May 15 08:10:14 server hydra[10691]:         C:/Users/jeremy/Google Drive/go/src/server_tools/hydra/main.go:82 +0x245

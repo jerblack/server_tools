@@ -59,6 +59,7 @@ import (
 			separate process should run mux -p <convert folder> -mf <finished file folder> will convert any files in
 			convert folder and move them to the finished file folder on completion
 		options
+			-h	print help
 			-p 	-p <start path>
 				start path. mux all files in folder.
 				if not specified, start path is current working directory (where mux was started from)
@@ -93,12 +94,13 @@ var (
 	moveFinishedPath string
 	relPath          string
 	probPath         string
-	recyclePath      = "/x/.config/_recycle"
+	recyclePath      string
 
 	moveConvert  bool
 	moveFinished bool
 	moveRel      bool
 	moveProb     bool
+	useRecycle   bool
 	force        bool
 
 	argR, argP, argF, argW bool
@@ -112,10 +114,70 @@ var (
 	allowedAudio = []string{"aac", "ac3", "eac3", "flac", "alac", "dts", "mp3", "truehd"}
 	engLangs     = []string{"eng", "en", "und", "mis", ""}
 )
+var help = ` mux options:
+  -h	print help
+  -p 	-p <start path>
+        start path. mux all files in folder.
+        if not specified, start path is current working directory (where mux was started from)
+  -f    -f <path to file>
+        mux single file
+  -r    mux all files in start path recursively
+  -mc   -mc <path to move files that need conversion>
+        move all files in jobs that need conversion to path specified with -mc instead of converting
+  -mf   -mf <path to move files after they have been converted>
+        move output file to folder specified with -mf after conversion.
+        meant to handle conversions delayed by -mc
+          mux instance 1
+            mux -p ~/_pre_proc -mc ~/_convert
+          mux instance 2
+            mux -w -p ~/_convert -mf ~/_proc
+  -rel  -rel with -mc or -mf will preserve the portion of the path after the path specified with -rel
+        file: /a/b/c/d/e/file.mkv -> ~/_convert/d/e/file.mkv
+          run from /
+            mux -p /a/b/ -r -mc ~/_convert -rel /a/b/c/
+          run from /a/b/
+            mux -r -mc ~/_convert -rel /a/b/c/
+  -w	watch start path for new files. stay running and remux and convert files as they appear.
+        recommend using with -mf
+  -prob -prob <path>
+        move all files in job to this folder if there is a failure during remux or convert
+  -recycle
+        -recycle <path to move files instead of deleting them>
+        If specified, files will be moved to this folder instead of being deleted`
 
 func getArgs() {
+
 	var e error
 	args := os.Args[1:]
+	if isAny("-h", args...) {
+		fmt.Println(help)
+		os.Exit(0)
+	}
+
+	if specifyRecycle := arrayIdx(args, "-recycle"); specifyRecycle != -1 {
+		useRecycle = true
+		if len(args) >= specifyRecycle+2 {
+			recyclePath = args[specifyRecycle+1]
+			recyclePath, e = filepath.Abs(recyclePath)
+			chkFatal(e)
+			st, e := os.Stat(recyclePath)
+			if errors.Is(e, os.ErrNotExist) {
+				e = os.MkdirAll(recyclePath, 0644)
+				if e != nil {
+					chk(e)
+					fmt.Println("path specified with -recycle is not valid (doesn't exist and can't be created).")
+					os.Exit(1)
+				}
+			}
+			if !st.IsDir() {
+				fmt.Println("path specified with -recycle is not a folder.")
+				os.Exit(1)
+			}
+		} else {
+			fmt.Println("must specify path with -recycle.")
+			os.Exit(1)
+		}
+	}
 
 	if specifyMoveConvert := arrayIdx(args, "-mc"); specifyMoveConvert != -1 {
 		moveConvert = true
@@ -125,8 +187,12 @@ func getArgs() {
 			chkFatal(e)
 			st, e := os.Stat(moveConvertPath)
 			if errors.Is(e, os.ErrNotExist) {
-				fmt.Println("path specified with -mc does not exist.")
-				os.Exit(1)
+				e = os.MkdirAll(moveConvertPath, 0644)
+				if e != nil {
+					chk(e)
+					fmt.Println("path specified with -mc is not valid (doesn't exist and can't be created).")
+					os.Exit(1)
+				}
 			}
 			if !st.IsDir() {
 				fmt.Println("path specified with -mc is not a folder.")
@@ -147,8 +213,12 @@ func getArgs() {
 			chkFatal(e)
 			st, e := os.Stat(moveFinishedPath)
 			if errors.Is(e, os.ErrNotExist) {
-				fmt.Println("path specified with -mf does not exist.")
-				os.Exit(1)
+				e = os.MkdirAll(moveFinishedPath, 0644)
+				if e != nil {
+					chk(e)
+					fmt.Println("path specified with -mf is not valid (doesn't exist and can't be created).")
+					os.Exit(1)
+				}
 			}
 			if !st.IsDir() {
 				fmt.Println("path specified with -mf is not a folder.")
@@ -254,8 +324,12 @@ func getArgs() {
 			chkFatal(e)
 			st, e := os.Stat(probPath)
 			if errors.Is(e, os.ErrNotExist) {
-				fmt.Println("path specified with -prob does not exist.")
-				os.Exit(1)
+				e = os.MkdirAll(probPath, 0644)
+				if e != nil {
+					chk(e)
+					fmt.Println("path specified with -prob is not valid (doesn't exist and can't be created).")
+					os.Exit(1)
+				}
 			}
 			if !st.IsDir() {
 				fmt.Println("path specified with -prob is not a folder.")

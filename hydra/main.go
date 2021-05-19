@@ -236,7 +236,7 @@ func (d *Deluge) AddTorrentMagnet(magnetPath string) {
 	if rsp.err != nil {
 		p("add magnet file failed: %s", rsp.err.Error())
 	} else {
-		p("add magnet file successful: %s", rsp.hash)
+		p("add %s magnet file successful: %s", d.name, rsp.hash)
 		rec := strings.Replace(magnetPath, torFolder, recycleFolder, 1)
 		rec = getAltPath(rec)
 		e := os.Rename(magnetPath, rec)
@@ -251,9 +251,9 @@ func (d *Deluge) AddTorrentFile(torrentPath string) {
 	}
 	rsp := <-d.response
 	if rsp.err != nil {
-		p("add torrent file failed: %s", rsp.err.Error())
+		p("add %s torrent file %s failed: %s", d.name, torrentPath, rsp.err.Error())
 	} else {
-		p("add torrent file successful: %s", rsp.hash)
+		p("add %s torrent file successful: %s", d.name, rsp.hash)
 		rec := strings.Replace(torrentPath, torFolder, recycleFolder, 1)
 		rec = getAltPath(rec)
 		e := os.Rename(torrentPath, rec)
@@ -365,7 +365,7 @@ func (d *Deluge) removeFinishedTorrents() {
 	torrents := d.getFinished()
 
 	for _, dt := range torrents {
-		p("torrent finished: %s", dt.name)
+		p("torrent finished on %s: %s", d.name, dt.name)
 		e := dt.pause()
 		if e != nil {
 			p(e.Error())
@@ -381,14 +381,14 @@ func (d *Deluge) linkFinishedTorrents() {
 	var fin []string
 	torrents := d.getFinished()
 	if len(torrents) > 0 {
-		p("found %d finished torrents", len(torrents))
+		p("found %d finished torrents on %s", len(torrents), d.name)
 	}
 	for _, dt := range torrents {
 		if isAny(dt.name, d.finished...) {
 			fin = append(fin, dt.name)
 			continue
 		}
-		p("torrent finished: %s", dt.name)
+		p("torrent finished on %s: %s", d.name, dt.name)
 		e := dt.linkFiles()
 		chkFatal(e)
 		e = dt.moveStorage()
@@ -416,7 +416,7 @@ func (d *Deluge) recheckErrors() {
 				chk(e)
 				state := delugeclient.TorrentState(st.state)
 				if state != delugeclient.StateChecking && state != delugeclient.StateError {
-					p("Torrent recheck for %s complete. State is now %s", st.name, st.state)
+					p("Torrent recheck on %s for %s complete. State is now %s", d.name, st.name, st.state)
 					checking = false
 				} else {
 					msg := fmt.Sprintf("Torrent state for %s is %s", st.name, st.state)
@@ -447,15 +447,15 @@ type DelugeTorrent struct {
 }
 
 func (dt *DelugeTorrent) pause() error {
-	p("pausing torrent %s", dt.name)
+	p("pausing %s torrent %s", dt.deluge.name, dt.name)
 	return dt.deluge.PauseTorrents(dt.id)
 }
 func (dt *DelugeTorrent) remove() (bool, error) {
-	p("removing torrent %s", dt.name)
+	p("removing %s torrent %s", dt.deluge.name, dt.name)
 	return dt.deluge.RemoveTorrent(dt.id, false)
 }
 func (dt *DelugeTorrent) moveFiles() {
-	p("moving %d files from torrent %s", len(dt.files), dt.name)
+	p("moving %d files from %s torrent %s", len(dt.files), dt.deluge.name, dt.name)
 	if dt.relPath == "" {
 		for _, f := range dt.files {
 			dst := strings.Replace(f, dt.deluge.doneFolder, preProcFolder, 1)
@@ -469,7 +469,7 @@ func (dt *DelugeTorrent) moveFiles() {
 	}
 }
 func (dt *DelugeTorrent) linkFiles() error {
-	p("linking %d files from torrent %s", len(dt.files), dt.name)
+	p("linking %d files from %s torrent %s", len(dt.files), dt.deluge.name, dt.name)
 
 	for _, src := range dt.files {
 		dst := strings.Replace(src, dt.deluge.doneFolder, preProcFolder, 1)
@@ -487,7 +487,7 @@ func (dt *DelugeTorrent) linkFiles() error {
 	return nil
 }
 func (dt *DelugeTorrent) moveStorage() error {
-	p("move torrent to new storage location: %s -> %s", dt.name, dt.deluge.seedFolder)
+	p("move %s torrent to new storage location: %s -> %s", dt.deluge.name, dt.name, dt.deluge.seedFolder)
 	return dt.deluge.MoveStorage([]string{dt.id}, dt.deluge.seedFolder)
 }
 
@@ -539,16 +539,22 @@ func parseConfig() {
 
 			switch k {
 			case "pre_proc_folder":
+				p("pre_proc_folder  -> %s", v)
 				preProcFolder = v
 			case "proc_folder":
+				p("procFolder       -> %s", v)
 				procFolder = v
 			case "convert_folder":
+				p("convert_folder   -> %s", v)
 				convertFolder = v
 			case "recycle_folder":
+				p("recycle_folder   -> %s", v)
 				recycleFolder = v
 			case "torrent_folder":
+				p("torrent_folder   -> %s", v)
 				torFolder = v
 			case "problem_folder":
+				p("problem_folder   -> %s", v)
 				probFolder = v
 			case "default":
 				if reTrue.MatchString(v) {
@@ -677,6 +683,9 @@ func muxPreProc() {
 		if probFolder != "" {
 			cmd = append(cmd, "-prob", probFolder)
 		}
+		if recycleFolder != "" {
+			cmd = append(cmd, "-recycle", recycleFolder)
+		}
 
 		err := run(cmd...)
 		chk(err)
@@ -690,6 +699,9 @@ func muxConvert() {
 			cmd := []string{"/usr/bin/mux", "-r", "-p", convertFolder, "-mf", procFolder}
 			if probFolder != "" {
 				cmd = append(cmd, "-prob", probFolder)
+			}
+			if recycleFolder != "" {
+				cmd = append(cmd, "-recycle", recycleFolder)
 			}
 			err := run(cmd...)
 			chk(err)
@@ -746,6 +758,8 @@ func finishTorrents() {
 }
 
 func main() {
+	p("starting hydra")
+	p("--------------")
 	parseConfig()
 	getDelugeClients()
 	go torFile.start()

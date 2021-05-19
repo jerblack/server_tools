@@ -4,6 +4,6 @@ WD=$1
 echo "$WD"
 cd "$WD" || exit 1
 /usr/bin/extract "$WD"
-/usr/bin/mux -r -p "$WD"
+/usr/bin/mux -r -p "$WD" -recycle "/x/.config/_recycle"
 echo postproc finished
 exit 0
