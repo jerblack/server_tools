@@ -85,7 +85,17 @@ func (d *Deluge) start() {
 }
 func (d *Deluge) handler() {
 	for cmd := range d.cmd {
-		d.verifyOpen()
+		var failedVerify bool
+		for d.verifyOpen() == false {
+			p("deluge daemon %s not available. retrying in 30 seconds", d.name)
+			failedVerify = true
+			time.Sleep(30 * time.Second)
+			d.open()
+		}
+		if failedVerify {
+			p("successfully reconnected to daemon %s", d.name)
+		}
+
 		switch cmd.fn {
 		case "PauseTorrents":
 			e := d.daemon.PauseTorrents(cmd.ids...)
@@ -180,6 +190,9 @@ func (d *Deluge) parseTorrents(torrents map[string]*delugeclient.TorrentStatus) 
 	return tor
 }
 func (d *Deluge) open() bool {
+	defer func() {
+		_ = recover()
+	}()
 	p("opening connection to daemon %s", d.name)
 	e := d.daemon.Connect()
 	if e != nil {
@@ -192,7 +205,14 @@ func (d *Deluge) close() {
 	e := d.daemon.Close()
 	chk(e)
 }
-func (d *Deluge) verifyOpen() bool {
+func (d *Deluge) verifyOpen() (open bool) {
+	defer func() {
+		r := recover()
+		if r != nil {
+			open = false
+		}
+
+	}()
 	_, e := d.daemon.DaemonVersion()
 	if e != nil {
 		chk(e)
