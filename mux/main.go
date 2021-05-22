@@ -154,6 +154,11 @@ func getArgs() {
 		os.Exit(0)
 	}
 
+	recyclePath = os.Getenv("RECYCLE")
+	if recyclePath != "" {
+		useRecycle = true
+	}
+
 	if specifyRecycle := arrayIdx(args, "-recycle"); specifyRecycle != -1 {
 		useRecycle = true
 		if len(args) >= specifyRecycle+2 {
@@ -839,6 +844,17 @@ func (j *Job) rewriteMkvContainer() error {
 	e = os.Rename(j.tmpVideo, j.video)
 	return e
 }
+func (j *Job) remuxWithFfmpeg() error {
+	tmpVid := filepath.Join(filepath.Dir(j.video), "tmp."+filepath.Base(j.video))
+	cmd := exec.Command("ffmpeg", "-i", j.video, "-avoid_negative_ts", "1", "-codec", "copy", tmpVid)
+	_ = cmd.Run()
+	e := os.Remove(j.video)
+	if e != nil {
+		return e
+	}
+	e = os.Rename(tmpVid, j.video)
+	return e
+}
 
 func (j *Job) runJob() {
 	if len(j.cmdLine) == 0 {
@@ -885,6 +901,17 @@ func (j *Job) runJob() {
 		qtReaderNoChunk := regexp.MustCompile(`Quicktime/MP4 reader: Could not read chunk number \d+/\d+ with size \d+ from position \d+. Aborting.`)
 		if qtReaderNoChunk.MatchString(w.warning) {
 			p("failed to read corrupt video file: %s", j.video)
+		}
+
+		noHeaderAtoms := "Have not found any header atoms"
+		if strings.Contains(w.warning, noHeaderAtoms) {
+			p("remuxing with ffmpeg")
+			e := j.remuxWithFfmpeg()
+			if e == nil {
+				restart = true
+			} else {
+				chk(e)
+			}
 		}
 
 		matroskaFileStructure := "Error in the Matroska file structure at position"
@@ -1196,6 +1223,7 @@ func runWarning(cmdLine []string, showStdout bool) *Warning {
 	reNoTrack := regexp.MustCompile(`Warning: '(.+)': (.+)`)
 	reTrack := regexp.MustCompile(`Warning: '(.+)' track (\d+): (.+)`)
 	reNoFile := regexp.MustCompile(`Warning: (.+)`)
+	reError := regexp.MustCompile(`Error: (.+)`)
 
 	go func() {
 		var w Warning
@@ -1215,6 +1243,9 @@ func runWarning(cmdLine []string, showStdout bool) *Warning {
 				w.warning = matches[3]
 			} else if reNoFile.MatchString(line) {
 				matches := reNoFile.FindStringSubmatch(line)
+				w.warning = matches[1]
+			} else if reError.MatchString(line) {
+				matches := reError.FindStringSubmatch(line)
 				w.warning = matches[1]
 			}
 		}
