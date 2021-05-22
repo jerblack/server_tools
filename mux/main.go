@@ -686,7 +686,12 @@ func (j *Job) convertStreams() {
 					"yuv420p", s.elementaryStream)
 			}
 			if s.CodecType == "audio" {
-				add("-c:a", "eac3", s.elementaryStream)
+				sampleRate, _ := strconv.ParseInt(s.SampleRate, 10, 64)
+				if sampleRate < 44100 {
+					add("-c:a", "ac3", s.elementaryStream)
+				} else {
+					add("-c:a", "eac3", s.elementaryStream)
+				}
 			}
 			if s.CodecType == "subtitle" {
 				if s.CodecName == "mov_text" {
@@ -1117,6 +1122,7 @@ type Stream struct {
 	CodecName        string `json:"codec_name"`
 	CodecType        string `json:"codec_type"`
 	FieldOrder       string `json:"field_order"`
+	SampleRate       string `json:"sample_rate"`
 	Disposition      struct {
 		Default int `json:"default"`
 		Forced  int `json:"forced"`
