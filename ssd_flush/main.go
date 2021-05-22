@@ -5,6 +5,7 @@ import (
 	. "github.com/jerblack/server_tools/base"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -156,7 +157,8 @@ func getArgs() {
 }
 
 func main() {
-	fn := logOutput(logFile)
+	p("ssd_flush called with args: %s", strings.Join(os.Args[1:], " "))
+	//fn := logOutput(logFile)
 	if isSnapraidRunning() {
 		p("snapraid is running. exiting.")
 		return
@@ -167,23 +169,32 @@ func main() {
 	}
 	getArgs()
 
-	err := moveOldFiles()
-	fn()
-	if err != nil {
-		b, e := os.ReadFile(logFile)
-		if e != nil {
-			p("error during log read for email: %s", e.Error())
-			return
-		}
-		email := Email{
-			Subject: fmt.Sprintf("ssd_flush error: %s", filepath.Base(logFile)),
-			Body:    string(b),
-		}
-		e = email.Send()
-		if e != nil {
-			p("error during email send: %s", e.Error())
-		}
-	}
+	_ = moveOldFiles()
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(
+		signalChan,
+		syscall.SIGHUP,  // kill -SIGHUP XXXX
+		syscall.SIGINT,  // kill -SIGINT XXXX or Ctrl+c
+		syscall.SIGQUIT, // kill -SIGQUIT XXXX
+	)
+	<-signalChan
+	p("exiting.")
+	//fn()
+	//if err != nil {
+	//	b, e := os.ReadFile(logFile)
+	//	if e != nil {
+	//		p("error during log read for email: %s", e.Error())
+	//		return
+	//	}
+	//	email := Email{
+	//		Subject: fmt.Sprintf("ssd_flush error: %s", filepath.Base(logFile)),
+	//		Body:    string(b),
+	//	}
+	//	e = email.Send()
+	//	if e != nil {
+	//		p("error during email send: %s", e.Error())
+	//	}
+	//}
 }
 
 var (
