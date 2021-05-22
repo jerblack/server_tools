@@ -829,6 +829,17 @@ func (j *Job) extractAudio(recode bool) {
 		}
 	}
 }
+func (j *Job) rewriteMkvContainer() error {
+	cmd := exec.Command("mkvmerge", "-o", j.tmpVideo, j.video)
+	_ = cmd.Run()
+	e := os.Remove(j.video)
+	if e != nil {
+		return e
+	}
+	e = os.Rename(j.tmpVideo, j.video)
+	return e
+}
+
 func (j *Job) runJob() {
 	if len(j.cmdLine) == 0 {
 		return
@@ -874,6 +885,17 @@ func (j *Job) runJob() {
 		qtReaderNoChunk := regexp.MustCompile(`Quicktime/MP4 reader: Could not read chunk number \d+/\d+ with size \d+ from position \d+. Aborting.`)
 		if qtReaderNoChunk.MatchString(w.warning) {
 			p("failed to read corrupt video file: %s", j.video)
+		}
+
+		matroskaFileStructure := "Error in the Matroska file structure at position"
+		if strings.Contains(w.warning, matroskaFileStructure) {
+			p("rewriting mkv container")
+			e := j.rewriteMkvContainer()
+			if e == nil {
+				restart = true
+			} else {
+				chk(e)
+			}
 		}
 
 		invalidChars := "text subtitle track contains invalid 8-bit characters"
