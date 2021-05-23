@@ -2,13 +2,16 @@
 
 [Unit]
 Description=hydra loves you
-Requires=docker.service island.service
-After=docker.service island.service sonarr.service
+#Requires=docker.service island.service
+#After=docker.service island.service sonarr.service
+Requires=docker.service
+After=docker.service
+
 StartLimitBurst=3
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/hydra
+ExecStart=/usr/local/bin/hydra
 User=jeremy
 Group=jeremy
 #Restart=on-failure
