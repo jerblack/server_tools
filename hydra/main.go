@@ -25,6 +25,7 @@ var (
 	}
 
 	procFolder, preProcFolder, convertFolder, recycleFolder, torFolder, probFolder string
+	protectedFolders                                                               []string
 
 	torFileInterval = 30
 	convertInterval = 60
@@ -259,7 +260,9 @@ func (d *Deluge) AddTorrentMagnet(magnetPath string) {
 		p("add %s magnet file successful: %s", d.name, rsp.hash)
 		rec := strings.Replace(magnetPath, torFolder, recycleFolder, 1)
 		rec = getAltPath(rec)
-		e := os.Rename(magnetPath, rec)
+		e := verifyFolder(filepath.Dir(rec))
+		chkFatal(e)
+		e = os.Rename(magnetPath, rec)
 		chkFatal(e)
 	}
 }
@@ -276,7 +279,9 @@ func (d *Deluge) AddTorrentFile(torrentPath string) {
 		p("add %s torrent file successful: %s", d.name, rsp.hash)
 		rec := strings.Replace(torrentPath, torFolder, recycleFolder, 1)
 		rec = getAltPath(rec)
-		e := os.Rename(torrentPath, rec)
+		e := verifyFolder(filepath.Dir(rec))
+		chkFatal(e)
+		e = os.Rename(torrentPath, rec)
 		chkFatal(e)
 	}
 }
@@ -477,6 +482,8 @@ func (dt *DelugeTorrent) remove() (bool, error) {
 func (dt *DelugeTorrent) moveFiles() {
 	p("moving %d files from %s torrent %s", len(dt.files), dt.deluge.name, dt.name)
 	if dt.relPath == "" {
+		e := verifyFolder(preProcFolder)
+		chkFatal(e)
 		for _, f := range dt.files {
 			dst := strings.Replace(f, dt.deluge.doneFolder, preProcFolder, 1)
 			e := os.Rename(f, dst)
@@ -485,6 +492,8 @@ func (dt *DelugeTorrent) moveFiles() {
 	} else {
 		src := filepath.Join(dt.deluge.doneFolder, dt.relPath)
 		dst := filepath.Join(preProcFolder, dt.relPath)
+		e := verifyFolder(filepath.Dir(dst))
+		chkFatal(e)
 		mvTree(src, dst, true)
 	}
 }
@@ -493,10 +502,8 @@ func (dt *DelugeTorrent) linkFiles() error {
 
 	for _, src := range dt.files {
 		dst := strings.Replace(src, dt.deluge.doneFolder, preProcFolder, 1)
-		e := os.MkdirAll(filepath.Dir(dst), 0770)
-		if e != nil {
-			return e
-		}
+		e := verifyFolder(filepath.Dir(dst))
+		chkFatal(e)
 		if !fileExists(dst) {
 			e = os.Link(src, dst)
 			if e != nil {
@@ -561,21 +568,27 @@ func parseConfig() {
 			case "pre_proc_folder":
 				p("pre_proc_folder  -> %s", v)
 				preProcFolder = v
+				protectedFolders = append(protectedFolders, v)
 			case "proc_folder":
 				p("procFolder       -> %s", v)
 				procFolder = v
+				protectedFolders = append(protectedFolders, v)
 			case "convert_folder":
 				p("convert_folder   -> %s", v)
 				convertFolder = v
+				protectedFolders = append(protectedFolders, v)
 			case "recycle_folder":
 				p("recycle_folder   -> %s", v)
 				recycleFolder = v
+				protectedFolders = append(protectedFolders, v)
 			case "torrent_folder":
 				p("torrent_folder   -> %s", v)
 				torFolder = v
+				protectedFolders = append(protectedFolders, v)
 			case "problem_folder":
 				p("problem_folder   -> %s", v)
 				probFolder = v
+				protectedFolders = append(protectedFolders, v)
 			case "default":
 				if reTrue.MatchString(v) {
 					defaultDeluge = deluge
@@ -605,8 +618,10 @@ func parseConfig() {
 				deluge.keepTime = days * 24 * 60 * 60
 			case "download_folder":
 				deluge.downloadFolder = v
+				protectedFolders = append(protectedFolders, v)
 			case "finished_folder":
 				deluge.doneFolder = v
+				protectedFolders = append(protectedFolders, v)
 			case "seed_folder":
 				deluge.seedFolder = v
 			case "trackers":
@@ -623,6 +638,8 @@ func parseConfig() {
 			}
 		}
 	}
+	e := verifyFolders()
+	chkFatal(e)
 }
 func getDelugeClients() {
 	for _, d := range delugeDaemons {
@@ -655,6 +672,8 @@ func (tf *TorFile) getFiles() {
 		}
 		return nil
 	}
+	e := verifyFolder(torFolder)
+	chkFatal(e)
 	err := filepath.Walk(torFolder, walk)
 	chkFatal(err)
 	for _, magnet := range magnets {
@@ -690,16 +709,20 @@ func (tf *TorFile) torrent(torrentPath string) {
 }
 
 func extractPreProc() {
+	e := verifyFolder(preProcFolder)
+	chkFatal(e)
 	if !isDirEmpty(preProcFolder) {
 		p("running extract in %s", preProcFolder)
-		err := run("/usr/bin/extract", preProcFolder)
+		err := run("extract", preProcFolder)
 		chk(err)
 	}
 }
 func muxPreProc() {
+	e := verifyFolder(preProcFolder)
+	chkFatal(e)
 	if !isDirEmpty(preProcFolder) {
 		p("running mux in %s", preProcFolder)
-		cmd := []string{"/usr/bin/mux", "-r", "-p", preProcFolder, "-mc", convertFolder}
+		cmd := []string{"mux", "-r", "-p", preProcFolder, "-mc", convertFolder}
 		if probFolder != "" {
 			cmd = append(cmd, "-prob", probFolder)
 		}
@@ -714,9 +737,11 @@ func muxPreProc() {
 func muxConvert() {
 	for {
 		time.Sleep(time.Duration(convertInterval) * time.Second)
+		e := verifyFolder(convertFolder, probFolder, recycleFolder)
+		chkFatal(e)
 		if !isDirEmpty(convertFolder) {
 			p("running mux in %s", convertFolder)
-			cmd := []string{"/usr/bin/mux", "-r", "-p", convertFolder, "-mf", procFolder}
+			cmd := []string{"mux", "-r", "-p", convertFolder, "-mf", procFolder}
 			if probFolder != "" {
 				cmd = append(cmd, "-prob", probFolder)
 			}
@@ -907,6 +932,35 @@ func isSnapraidRunning() bool {
 	cmd := exec.Command("/usr/bin/pidof", "snapraid")
 	e := cmd.Run()
 	return e == nil
+}
+
+func verifyFolder(paths ...string) error {
+	for _, path := range paths {
+		f, e := os.Stat(path)
+		if e != nil {
+			if errors.Is(e, os.ErrNotExist) {
+				e = os.MkdirAll(path, 0755)
+				if e != nil {
+					return e
+				}
+			} else {
+				return e
+			}
+		}
+		if !f.IsDir() {
+			return errors.New(fmt.Sprintf("path is not a folder: %s", path))
+		}
+	}
+	return nil
+}
+func verifyFolders() error {
+	for _, f := range protectedFolders {
+		e := verifyFolder(f)
+		if e != nil {
+			return e
+		}
+	}
+	return nil
 }
 
 var (

@@ -43,8 +43,8 @@ import (
 
 var (
 	startPath string
-	unrar     = "/usr/bin/unrar"
-	unzip     = "/usr/bin/unzip"
+	unrar     = "unrar"
+	unzip     = "unzip"
 	count     = 0
 	rars      map[string][]string
 	zips      map[string][]string

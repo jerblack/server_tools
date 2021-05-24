@@ -6,7 +6,7 @@ Requires=mnt-ssd01.mount mnt-ssd02.mount mnt-ssd03.mount mnt-ssd04.mount mnt-zhd
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/ssd_flush
+ExecStart=/usr/local/bin/ssd_flush
 User=jeremy
 Group=jeremy
 
