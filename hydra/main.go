@@ -946,9 +946,10 @@ func verifyFolder(paths ...string) error {
 			} else {
 				return e
 			}
-		}
-		if !f.IsDir() {
-			return errors.New(fmt.Sprintf("path is not a folder: %s", path))
+		} else {
+			if !f.IsDir() {
+				return errors.New(fmt.Sprintf("path is not a folder: %s", path))
+			}
 		}
 	}
 	return nil

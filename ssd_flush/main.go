@@ -96,7 +96,7 @@ func moveOldFiles() error {
 		p("found %d folders on %s to move", numFolder, ssd)
 		for i, folder := range folders {
 			folder = strings.Replace(folder, ssd, array, 1)
-			p("%d/%d creating folder: %s", i, numFolder, folder)
+			p("%d/%d creating folder: %s", i+1, numFolder, folder)
 			err = os.MkdirAll(folder, 0777)
 			if err != nil {
 				return err
@@ -168,8 +168,14 @@ func main() {
 		return
 	}
 	getArgs()
+	doneChan := make(chan bool, 1)
+	go func() {
+		e := moveOldFiles()
+		chk(e)
+		doneChan <- true
 
-	_ = moveOldFiles()
+	}()
+
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(
 		signalChan,
@@ -177,24 +183,14 @@ func main() {
 		syscall.SIGINT,  // kill -SIGINT XXXX or Ctrl+c
 		syscall.SIGQUIT, // kill -SIGQUIT XXXX
 	)
-	<-signalChan
-	p("exiting.")
-	//fn()
-	//if err != nil {
-	//	b, e := os.ReadFile(logFile)
-	//	if e != nil {
-	//		p("error during log read for email: %s", e.Error())
-	//		return
-	//	}
-	//	email := Email{
-	//		Subject: fmt.Sprintf("ssd_flush error: %s", filepath.Base(logFile)),
-	//		Body:    string(b),
-	//	}
-	//	e = email.Send()
-	//	if e != nil {
-	//		p("error during email send: %s", e.Error())
-	//	}
-	//}
+	select {
+	case <-signalChan:
+		p("exiting")
+		os.Exit(0)
+	case <-doneChan:
+		p("finished")
+		os.Exit(0)
+	}
 }
 
 var (

@@ -898,6 +898,17 @@ func (j *Job) runJob() {
 			}
 		}
 	} else {
+		trackRequestedNotFound := regexp.MustCompile(`A track with the ID \d+ was requested but not found in the file. The corresponding option will be ignored.`)
+		if trackRequestedNotFound.MatchString(w.warning) && isVideo(w.filename) {
+			p("remuxing with ffmpeg")
+			e := j.remuxWithFfmpeg()
+			if e == nil {
+				restart = true
+			} else {
+				chk(e)
+			}
+		}
+
 		qtReaderNoChunk := regexp.MustCompile(`Quicktime/MP4 reader: Could not read chunk number \d+/\d+ with size \d+ from position \d+. Aborting.`)
 		if qtReaderNoChunk.MatchString(w.warning) {
 			p("failed to read corrupt video file: %s", j.video)
