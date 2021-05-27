@@ -103,6 +103,8 @@ var (
 	useRecycle   bool
 	force        bool
 
+	exitOnError bool
+
 	argR, argP, argF, argW bool
 
 	videoExts = []string{
@@ -139,6 +141,7 @@ var help = ` mux options:
             mux -r -mc ~/_convert -rel /a/b/c/
   -w	watch start path for new files. stay running and remux and convert files as they appear.
         recommend using with -mf
+  -xe   exit on error. if unable to complete job, exit instead of proceeding with queue processing
   -prob -prob <path>
         move all files in job to this folder if there is a failure during remux or convert
   -recycle
@@ -260,6 +263,9 @@ func getArgs() {
 
 	if isAny("-force", args...) {
 		force = true
+	}
+	if isAny("-xe", args...) {
+		exitOnError = true
 	}
 	if isAny("-r", args...) {
 		argR = true
@@ -444,6 +450,8 @@ type Job struct {
 	mux          bool   //	remux required for job
 	convert      bool   //	convert required for job
 	restarted    bool   //   job has been restarted
+	reStream     bool   //   job is restarted and needs streams refreshed
+	failed       bool   //  mark job failed for -xe exit on error
 
 	streams       []*Stream //	 all streams found for job, internal and external
 	vidStream     []*Stream //  video stream in primary main file
@@ -459,15 +467,34 @@ type Job struct {
 
 func (j *Job) start() {
 	var e error
-	if !j.restarted {
-		if e, j.streams = j.getStreams(j.video); e != nil {
+	if !j.restarted || j.reStream {
+		e, j.streams = j.getStreams(j.video)
+		if e != nil {
 			p("failed to get streams for file: %s", j.video)
+
 			p("got error: %s", e)
+			//if !j.reStream && strings.HasSuffix(strings.ToLower(j.video), ".mkv") {
+			//	p("fix needed: remux with ffmpeg")
+			//	e = j.remuxWithFfmpeg()
+			//	if e != nil {
+			//		chk(e)
+			//		j.failed = true
+			//	} else {
+			//		j.restarted = true
+			//		j.start()
+			//		return
+			//	}
+			//}
+
 			if moveProb {
 				p("FILE LIKELY CORRUPT, MOVING TO %s", probPath)
 				j.move(probPath)
 			} else {
 				p("FILE LIKELY CORRUPT, SKIPPING")
+			}
+			if exitOnError {
+				p("job failed and -xe set. exiting")
+				os.Exit(1)
 			}
 			return
 		}
@@ -487,6 +514,10 @@ func (j *Job) start() {
 	} else if moveFinished {
 		p("-mf is set, moving file to '%s'", moveFinishedPath)
 		j.move(moveFinishedPath)
+	}
+	if j.failed && exitOnError {
+		p("job failed and -xe set. exiting")
+		os.Exit(1)
 	}
 }
 
@@ -797,7 +828,7 @@ func (j *Job) extractSubs() {
 			ext := exts[stream.CodecName]
 			elm := fmt.Sprintf("%s.%d%s", j.baseWithPath, stream.Index, ext)
 			cmd := exec.Command("ffmpeg", "-i", j.video, "-map", fmt.Sprintf("0:%d", stream.Index),
-				"-c:s", "copy", elm)
+				"-c:s", stream.CodecName, elm)
 			e := cmd.Run()
 			chk(e)
 			if e == nil {
@@ -837,7 +868,7 @@ func (j *Job) extractAudio(recode bool) {
 func (j *Job) rewriteMkvContainer() error {
 	cmd := exec.Command("mkvmerge", "-o", j.tmpVideo, j.video)
 	_ = cmd.Run()
-	e := os.Remove(j.video)
+	e := removeFile(j.video)
 	if e != nil {
 		return e
 	}
@@ -848,11 +879,15 @@ func (j *Job) remuxWithFfmpeg() error {
 	tmpVid := filepath.Join(filepath.Dir(j.video), "tmp."+filepath.Base(j.video))
 	cmd := exec.Command("ffmpeg", "-i", j.video, "-avoid_negative_ts", "1", "-codec", "copy", tmpVid)
 	_ = cmd.Run()
-	e := os.Remove(j.video)
+	if !fileExists(tmpVid) {
+		return fmt.Errorf("failed to remux file with ffmpeg: %s", j.video)
+	}
+	e := removeFile(j.video)
 	if e != nil {
 		return e
 	}
 	e = os.Rename(tmpVid, j.video)
+	j.reStream = true
 	return e
 }
 
@@ -866,7 +901,7 @@ func (j *Job) runJob() {
 
 	if w == nil {
 		p("removing file '%s'", j.video)
-		err := os.Remove(j.video)
+		err := removeFile(j.video)
 		chk(err)
 		if err == nil {
 			p("renaming '%s' to '%s'", j.tmpVideo, j.finalVideo)
@@ -882,25 +917,38 @@ func (j *Job) runJob() {
 					}
 					err = mvFile(j.finalVideo, dst)
 					chk(err)
+					if err != nil {
+						j.failed = true
+					}
 				}
 				for _, s := range j.streams {
 					if s.elementaryStream != "" && fileExists(s.elementaryStream) {
 						p("removing temporary elementary stream: %s", s.elementaryStream)
-						e := os.Remove(s.elementaryStream)
+						e := removeFile(s.elementaryStream)
 						chk(e)
+						if err != nil {
+							j.failed = true
+						}
 					}
 					if s.subFile != "" && fileExists(s.subFile) {
 						p("removing temporary elementary stream: %s", s.subFile)
-						e := os.Remove(s.subFile)
+						e := removeFile(s.subFile)
 						chk(e)
+						if err != nil {
+							j.failed = true
+						}
 					}
 				}
+			} else {
+				j.failed = true
 			}
 		}
 	} else {
+		p("remux failed for '%s'", j.video)
+
 		trackRequestedNotFound := regexp.MustCompile(`A track with the ID \d+ was requested but not found in the file. The corresponding option will be ignored.`)
 		if trackRequestedNotFound.MatchString(w.warning) && isVideo(w.filename) {
-			p("remuxing with ffmpeg")
+			p("fix needed: remux with ffmpeg")
 			e := j.remuxWithFfmpeg()
 			if e == nil {
 				restart = true
@@ -912,11 +960,12 @@ func (j *Job) runJob() {
 		qtReaderNoChunk := regexp.MustCompile(`Quicktime/MP4 reader: Could not read chunk number \d+/\d+ with size \d+ from position \d+. Aborting.`)
 		if qtReaderNoChunk.MatchString(w.warning) {
 			p("failed to read corrupt video file: %s", j.video)
+			j.failed = true
 		}
 
 		noHeaderAtoms := "Have not found any header atoms"
 		if strings.Contains(w.warning, noHeaderAtoms) {
-			p("remuxing with ffmpeg")
+			p("fix needed: remux with ffmpeg")
 			e := j.remuxWithFfmpeg()
 			if e == nil {
 				restart = true
@@ -927,7 +976,7 @@ func (j *Job) runJob() {
 
 		matroskaFileStructure := "Error in the Matroska file structure at position"
 		if strings.Contains(w.warning, matroskaFileStructure) {
-			p("rewriting mkv container")
+			p("fix needed: rewrite mkv container")
 			e := j.rewriteMkvContainer()
 			if e == nil {
 				restart = true
@@ -938,31 +987,34 @@ func (j *Job) runJob() {
 
 		invalidChars := "text subtitle track contains invalid 8-bit characters"
 		if strings.Contains(w.warning, invalidChars) && isVideo(w.filename) {
-			p("extracting all internal subtitles")
+			p("fix needed: extract all internal subtitles")
 			j.extractSubs()
 			restart = true
 		}
 
 		audioInvalidData := regexp.MustCompile(`audio track contains \d+ bytes of invalid data`)
 		if audioInvalidData.MatchString(w.warning) && isVideo(w.filename) {
-			p("extracting all internal audio streams")
+			p("fix needed: extract all internal audio streams")
 			j.extractAudio(true)
 			restart = true
 		}
 
 		noAc3Header := "No AC-3 header found in first frame"
 		if strings.Contains(w.warning, noAc3Header) && isVideo(w.filename) {
-			p("extracting all internal audio streams")
+			p("fix needed: extract all internal audio streams")
 			j.extractAudio(true)
 			restart = true
 		}
 
-		p("remux failed for '%s'", j.video)
 		_, err := os.Stat(j.tmpVideo)
 		if !errors.Is(err, os.ErrNotExist) {
 			p("removing temp file %s", j.tmpVideo)
-			err = os.Remove(j.tmpVideo)
-			chk(err)
+			e := removeFile(j.tmpVideo)
+			chkFatal(e)
+
+		}
+		if !restart {
+			j.failed = true
 		}
 		if moveProb && !restart {
 			p("moving %s -> %s", j.video, probPath)
@@ -1038,16 +1090,14 @@ func checkSortedSrt(srt string) error {
 	if timestampProblem {
 		p("srt was not sorted by timestamp. fixing.")
 		if fileExists(srt) {
-			e := os.Remove(srt)
-			chkFatal(e)
+			removeFile(srt)
 		}
 
 		e := os.Rename(tmp, srt)
 		chkFatal(e)
 	} else {
 		if fileExists(tmp) {
-			e := os.Remove(tmp)
-			chkFatal(e)
+			removeFile(tmp)
 		}
 	}
 
@@ -1151,19 +1201,17 @@ func convertTextUtf8(f string) {
 	e = os.WriteFile(f, out, st.Mode())
 	chkFatal(e)
 }
-func removeFile(f string) {
+func removeFile(f string) error {
 	// expects full path
 	dir := filepath.Dir(f)
 	if recyclePath != "" {
 		dst := strings.Replace(f, dir, recyclePath, 1)
-		p("moving file %s -> %s", f, dst)
-		e := mvFile(f, dst)
-		chkFatal(e)
+		//p("moving file %s -> %s", f, dst)
+		return mvFile(f, dst)
 
 	} else {
-		p("deleting file %s", f)
-		e := os.Remove(f)
-		chkFatal(e)
+		//p("deleting file %s", f)
+		return os.Remove(f)
 	}
 
 }

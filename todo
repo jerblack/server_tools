@@ -1,9 +1,9 @@
-TODO: MUX: -mfa
-  -mfa	same as -mf, except files are moved in separate goroutine. If more jobs are available, next job will begin immediately
+TODO: MUX: -mfa -> move finished file async instead of serially like -mf
+    mfa	same as -mf, except files are moved in separate goroutine. If more jobs are available, next job will begin immediately
 		instead of waiting for -mf move to finish. Useful for slow network copy.
 TODO: MUX: watch remote folder, move new files into work path, convert, move to new target with rel path
 TODO: MUX: investigate message "Consider increasing the value for the 'analyzeduration' and 'probesize' options"
-TODO: MUX: -mfa -> move finished file async instead of serially like -mf
+TODO: MUX: auto fail stalled jobs (no cpu, no io for 3 minutes)
 
 TODO: HYDRA: add conf option to auto-delete torrents after x days unfinished & mark in sonarr as dead
 TODO: HYDRA: check for and unpause paused torrents
@@ -14,6 +14,8 @@ TODO: YT : build, monitor failures, auto retry, log failed
 TODO: KODI remote : web, play/pause/skip forward/stop/delete current
 TODO: KODI remote : auto move last played to .played subfolder on change
 
+TODO: M: folder guesser should account for year
+
 -- wait for more info --
 TODO: HYDRA: move files from sab folder to pre-proc if not picked up by sonarr after x time
 
@@ -21,9 +23,6 @@ TODO: HYDRA: move files from sab folder to pre-proc if not picked up by sonarr a
 -- done but need to verify --
 TODO: HYDRA: if progress is 100% but state is not seeding after x checks, force deluge recheck
     ^ done, but need to monitor if problem reoccurs ^
-TODO: HYDRA: if progress is 100% and state is seeding after x checks, move storage to seeding folder
-TODO: HYDRA: need to remove empty folders from torrent done folders
 TODO: HYDRA: need to verify that torrents are in done folder and not still in dl folder before removing them (MoveStorage first)
 
 ---------------------
-TODO: HYDRA: auto fail stalled jobs (no cpu, no io for 3 minutes)

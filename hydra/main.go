@@ -55,7 +55,7 @@ type DelugeResponse struct {
 }
 
 type Deluge struct {
-	daemon   *delugeclient.Client
+	daemon   *delugeclient.ClientV2
 	cmd      chan DelugeCommand
 	response chan DelugeResponse
 
@@ -72,7 +72,7 @@ type Deluge struct {
 }
 
 func (d *Deluge) start() {
-	d.daemon = delugeclient.NewV1(delugeclient.Settings{
+	d.daemon = delugeclient.NewV2(delugeclient.Settings{
 		Port: d.port, Login: d.user, Password: d.pass, Hostname: d.ip,
 	})
 	d.stuckDl = make(map[string]int)
