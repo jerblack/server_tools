@@ -53,7 +53,6 @@ type DelugeResponse struct {
 	torrent  DelugeTorrent
 	hash     string
 }
-
 type Deluge struct {
 	daemon   *delugeclient.ClientV2
 	cmd      chan DelugeCommand
