@@ -5,14 +5,11 @@ TODO: MUX: watch remote folder, move new files into work path, convert, move to 
 TODO: MUX: investigate message "Consider increasing the value for the 'analyzeduration' and 'probesize' options"
 TODO: MUX: auto fail stalled jobs (no cpu, no io for 3 minutes)
 
-TODO: HYDRA: finished torrents are not being removed after upgrade
 TODO: HYDRA: find and remove stalled torrents (incomplete, availility < 1.0, added more than 1 month ago
 
 
 TODO: HYDRA: add conf option to auto-delete torrents after x days unfinished & mark in sonarr as dead
 TODO: HYDRA: check for and unpause paused torrents
-
-TODO: DUPER: index files deterministically
 
 TODO: YT : build, monitor failures, auto retry, log failed
 TODO: KODI remote : web, play/pause/skip forward/stop/delete current
