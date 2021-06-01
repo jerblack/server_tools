@@ -389,9 +389,11 @@ func DqQuery(query string, dbFile string, params ...interface{}) [][]interface{}
 	db, err := sql.Open("sqlite3", dbFile)
 	ChkFatal(err)
 	defer db.Close()
-	rows, _ := db.Query(query, params...)
+	rows, e := db.Query(query, params...)
+	Chk(e)
 	defer rows.Close()
-	cols, _ := rows.Columns()
+	cols, e := rows.Columns()
+	Chk(e)
 	var results [][]interface{}
 	n := len(cols)
 	for rows.Next() {
