@@ -3,10 +3,13 @@ package main
 import (
 	_ "embed"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	delugeclient "github.com/jerblack/go-libdeluge"
 	"github.com/jerblack/server_tools/base"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -22,20 +25,34 @@ var (
 	possibleConfs = []string{
 		"/run/secrets/hydra.conf",
 		"/etc/hydra.conf",
+		"/home/jeremy/.config/hydra/hydra.conf",
 	}
+	dbFile = "/home/jeremy/.config/hydra/hydra.db"
 
-	procFolder, preProcFolder, convertFolder, recycleFolder, torFolder, probFolder string
-	protectedFolders                                                               []string
+	procFolder, preProcFolder, convertFolder string
+	recycleFolder, torFolder, probFolder     string
+	protectedFolders                         []string
 
-	torFileInterval = 30
-	convertInterval = 60
-	delugeInterval  = 60
+	torFileInterval      = 30 * time.Second
+	convertInterval      = 60 * time.Second
+	convertStartDelay    = 2 * time.Minute
+	finishStartDelay     = 3 * time.Second
+	finishInterval       = 60 * time.Second
+	staleStartDelay      = 10 * time.Second
+	staleInterval        = 10 * time.Minute
+	pruneInterval        = 1 * time.Hour
+	pruneStartDelay      = 20 * time.Second
+	errorCheckStartDelay = 30 * time.Second
+	errorCheckInterval   = 30 * time.Minute
 
 	delugeDaemons map[string]*Deluge
 	defaultDeluge *Deluge
 	torFile       TorFile
+	staleTorrent  StaleTorrent
 
-	sabApi, sabIp, sabPort string
+	sabKey, sabIp, sabPort          string
+	sonarrKey, sonarrIp, sonarrPort string
+	staleAge                        time.Duration
 )
 
 type DelugeCommand struct {
@@ -64,9 +81,10 @@ type Deluge struct {
 	port                                   uint
 	keepDone                               bool
 	keepRatio                              float32
-	keepTime                               int64
+	keepTime                               time.Duration
 	stuckDl                                map[string]int
 	stuckSeeds                             map[string]int
+	stuckPaused                            map[string]int
 	finished                               []string
 }
 
@@ -99,6 +117,11 @@ func (d *Deluge) handler() {
 		switch cmd.fn {
 		case "PauseTorrents":
 			e := d.daemon.PauseTorrents(cmd.ids...)
+			d.response <- DelugeResponse{
+				err: e,
+			}
+		case "ResumeTorrents":
+			e := d.daemon.ResumeTorrents(cmd.ids...)
 			d.response <- DelugeResponse{
 				err: e,
 			}
@@ -156,10 +179,10 @@ func (d *Deluge) parseTorrent(id string, t *delugeclient.TorrentStatus) DelugeTo
 	var dt DelugeTorrent
 	dt.id = id
 	dt.name = t.Name
-	dt.timeSeeded = t.SeedingTime
-	dt.timeAdded = t.TimeAdded
-	dt.timeActive = t.ActiveTime
-	dt.timeCompleted = t.CompletedTime
+	dt.timeSeeded = time.Duration(t.SeedingTime) * time.Second
+	dt.timeAdded = time.Unix(int64(t.TimeAdded), 0)
+	dt.timeActive = time.Duration(t.ActiveTime) * time.Second
+	dt.timeCompleted = time.Duration(t.CompletedTime) * time.Second
 	dt.ratio = t.Ratio
 	dt.deluge = d
 	dt.state = t.State
@@ -229,6 +252,14 @@ func (d *Deluge) PauseTorrents(ids ...string) error {
 	rsp := <-d.response
 	return rsp.err
 }
+func (d *Deluge) ResumeTorrents(ids ...string) error {
+	d.cmd <- DelugeCommand{
+		fn:  "ResumeTorrents",
+		ids: ids,
+	}
+	rsp := <-d.response
+	return rsp.err
+}
 func (d *Deluge) ForceRecheck(ids ...string) error {
 	d.cmd <- DelugeCommand{
 		fn:  "ForceRecheck",
@@ -237,14 +268,14 @@ func (d *Deluge) ForceRecheck(ids ...string) error {
 	rsp := <-d.response
 	return rsp.err
 }
-func (d *Deluge) RemoveTorrent(id string, rmFile bool) (bool, error) {
+func (d *Deluge) RemoveTorrent(id string, rmFile bool) error {
 	d.cmd <- DelugeCommand{
 		fn: "RemoveTorrent",
 		id: id,
 		tf: rmFile,
 	}
 	rsp := <-d.response
-	return rsp.success, rsp.err
+	return rsp.err
 }
 func (d *Deluge) AddTorrentMagnet(magnetPath string) {
 	p("adding magnet file to %s: %s", d.name, magnetPath)
@@ -316,6 +347,13 @@ func (d *Deluge) getTorrents() []DelugeTorrent {
 	}
 	return torrents
 }
+func (d *Deluge) getPaused() []DelugeTorrent {
+	torrents, e := d.TorrentsStatus(delugeclient.StatePaused)
+	if e != nil && !strings.Contains(e.Error(), `field "ETA"`) {
+		chkFatal(e)
+	}
+	return torrents
+}
 func (d *Deluge) getFinished() []DelugeTorrent {
 	torrents, e := d.TorrentsStatus(delugeclient.StateSeeding)
 	if e != nil && !strings.Contains(e.Error(), `field "ETA"`) {
@@ -328,6 +366,19 @@ func (d *Deluge) getFinished() []DelugeTorrent {
 		}
 	}
 	return fin
+}
+func (d *Deluge) getDownloading() []DelugeTorrent {
+	torrents, e := d.TorrentsStatus(delugeclient.StateDownloading)
+	if e != nil && !strings.Contains(e.Error(), `field "ETA"`) {
+		chkFatal(e)
+	}
+	var dls []DelugeTorrent
+	for _, t := range torrents {
+		if !t.isSeed && !t.isFinished && t.state == "Downloading" && t.progress < 100 && t.savePath == d.downloadFolder {
+			dls = append(dls, t)
+		}
+	}
+	return dls
 }
 func (d *Deluge) getErrors() []DelugeTorrent {
 	torrents, e := d.TorrentsStatus(delugeclient.StateError)
@@ -372,6 +423,16 @@ func (d *Deluge) checkStuckTorrents() {
 				chk(e)
 			}
 		}
+		if v.state == "Paused" {
+			n := d.stuckPaused[v.id]
+			n = n + 1
+			d.stuckPaused[v.id] = n
+			if n >= 3 {
+				delete(d.stuckPaused, v.id)
+				e := d.ResumeTorrents(v.id)
+				chk(e)
+			}
+		}
 	}
 }
 func (d *Deluge) checkFinishedTorrents() {
@@ -395,7 +456,7 @@ func (d *Deluge) removeFinishedTorrents() {
 			p(e.Error())
 			continue
 		}
-		_, e = dt.remove()
+		e = dt.remove(false)
 		chk(e)
 		dt.moveFiles()
 	}
@@ -462,8 +523,8 @@ func (d *Deluge) recheckErrors() {
 type DelugeTorrent struct {
 	name, id, relPath                     string
 	state, savePath                       string
-	timeSeeded, timeActive, timeCompleted int64
-	timeAdded                             float32
+	timeSeeded, timeActive, timeCompleted time.Duration
+	timeAdded                             time.Time
 	ratio, progress                       float32
 	files                                 []string
 	deluge                                *Deluge
@@ -474,9 +535,13 @@ func (dt *DelugeTorrent) pause() error {
 	p("pausing %s torrent %s", dt.deluge.name, dt.name)
 	return dt.deluge.PauseTorrents(dt.id)
 }
-func (dt *DelugeTorrent) remove() (bool, error) {
+func (dt *DelugeTorrent) remove(rmFile bool) error {
 	p("removing %s torrent %s", dt.deluge.name, dt.name)
-	return dt.deluge.RemoveTorrent(dt.id, false)
+	return dt.deluge.RemoveTorrent(dt.id, rmFile)
+}
+func (dt *DelugeTorrent) resume() error {
+	p("resuming %s torrent %s", dt.deluge.name, dt.name)
+	return dt.deluge.ResumeTorrents(dt.id)
 }
 func (dt *DelugeTorrent) moveFiles() {
 	p("moving %d files from %s torrent %s", len(dt.files), dt.deluge.name, dt.name)
@@ -613,8 +678,7 @@ func parseConfig() {
 			case "keep_days":
 				days, e := strconv.ParseInt(v, 10, 64)
 				chkFatal(e)
-				// deluge reports seed_time in seconds
-				deluge.keepTime = days * 24 * 60 * 60
+				deluge.keepTime = time.Duration(days*24) * time.Hour
 			case "download_folder":
 				deluge.downloadFolder = v
 				protectedFolders = append(protectedFolders, v)
@@ -632,8 +696,18 @@ func parseConfig() {
 				sabIp = v
 			case "sab_port":
 				sabPort = v
-			case "sab_api":
-				sabApi = v
+			case "sab_key":
+				sabKey = v
+			case "sonarr_ip":
+				sonarrIp = v
+			case "sonarr_port":
+				sonarrPort = v
+			case "sonarr_key":
+				sonarrKey = v
+			case "stale_age":
+				age, e := strconv.Atoi(v)
+				chkFatal(e)
+				staleAge = time.Duration(age*24) * time.Hour
 			}
 		}
 	}
@@ -646,13 +720,217 @@ func getDelugeClients() {
 	}
 }
 
+type Sonarr struct {
+	Episodes []struct {
+		Id int `json:"id"`
+	} `json:"episodes"`
+	Records []struct {
+		Id        int    `json:"id"`
+		EventType string `json:"eventType"`
+	} `json:"records"`
+}
+
+func (s *Sonarr) blacklist(title string) (e error) {
+	var epId, recordId int
+	epId, e = s.parseTitle(title)
+	if e != nil {
+		p("error during sonarr title parse: %s", e.Error())
+		return
+	}
+	recordId, e = s.getLastGrabId(epId)
+	if e != nil {
+		p("error during sonarr episode history lookup: %s", e.Error())
+		return
+	}
+	e = s.markFailed(recordId)
+	if e != nil {
+		p("error during sonarr mark failed: %s", e.Error())
+	}
+	return
+}
+func (s *Sonarr) parseTitle(title string) (id int, e error) {
+	uri := fmt.Sprintf(`http://%s:%s/api/v3/parse`, sonarrIp, sonarrPort)
+	client := &http.Client{}
+	req, e := http.NewRequest("GET", uri, nil)
+	chkFatal(e)
+	req.Header.Set("X-Api-Key", sonarrKey)
+	req.Header.Set("Content-Type", "application/json")
+	q := req.URL.Query()
+	q.Add("title", title)
+	req.URL.RawQuery = q.Encode()
+	rsp, e := client.Do(req)
+	if e != nil {
+		return
+	}
+	defer rsp.Body.Close()
+	if rsp.ContentLength == 0 {
+		e = fmt.Errorf("no results found parsing title: %s", title)
+		return
+	}
+	body, e := io.ReadAll(rsp.Body)
+	if e != nil {
+		return
+	}
+	e = json.Unmarshal(body, s)
+	if e != nil {
+		return
+	}
+	if len(s.Episodes) > 0 {
+		id = s.Episodes[0].Id
+	} else {
+		e = fmt.Errorf("no results found parsing title: %s", title)
+	}
+	return
+}
+func (s *Sonarr) getLastGrabId(episodeId int) (recordId int, e error) {
+	uri := fmt.Sprintf(`http://%s:%s/api/v3/history`, sonarrIp, sonarrPort)
+	client := &http.Client{}
+	req, e := http.NewRequest("GET", uri, nil)
+	chkFatal(e)
+	req.Header.Set("X-Api-Key", sonarrKey)
+	req.Header.Set("Content-Type", "application/json")
+	q := req.URL.Query()
+	q.Add("sortKey", "date")
+	q.Add("sortDir", "desc")
+	q.Add("episodeId", fmt.Sprintf("%d", episodeId))
+	req.URL.RawQuery = q.Encode()
+	rsp, e := client.Do(req)
+	if e != nil {
+		fmt.Println(e)
+		return
+	}
+	defer rsp.Body.Close()
+	body, e := io.ReadAll(rsp.Body)
+	if e != nil {
+		fmt.Println(e)
+		return
+	}
+	e = json.Unmarshal(body, s)
+	if e != nil {
+		fmt.Println(e)
+		return
+	}
+
+	for _, record := range s.Records {
+		if record.EventType == "grabbed" {
+			recordId = record.Id
+			return
+		}
+	}
+	e = fmt.Errorf("no grabbed record found for episodeId")
+	return
+}
+func (s *Sonarr) markFailed(recordId int) (e error) {
+	uri := fmt.Sprintf(`http://%s:%s/api/v3/history/failed/%d`, sonarrIp, sonarrPort, recordId)
+	client := &http.Client{}
+	req, e := http.NewRequest("POST", uri, nil)
+	chkFatal(e)
+	req.Header.Set("X-Api-Key", sonarrKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Length", "0")
+	rsp, e := client.Do(req)
+	if e != nil {
+		fmt.Println(e)
+		return
+	}
+	defer rsp.Body.Close()
+	return
+}
+func (s *Sonarr) isOnline() bool {
+	uri := fmt.Sprintf(`http://%s:%s/api/v3/system/status`, sonarrIp, sonarrPort)
+	client := &http.Client{}
+	req, e := http.NewRequest("GET", uri, nil)
+	chkFatal(e)
+	req.Header.Set("X-Api-Key", sonarrKey)
+	req.Header.Set("Content-Type", "application/json")
+	rsp, e := client.Do(req)
+	if e != nil {
+		return false
+	}
+	defer rsp.Body.Close()
+	return rsp.StatusCode == http.StatusOK
+}
+
+type StaleTorrent struct{}
+
+func (st *StaleTorrent) start() {
+	time.Sleep(staleStartDelay)
+	p("starting stale torrent monitor")
+	e := os.MkdirAll(filepath.Dir(dbFile), 0644)
+	chkFatal(e)
+	cmd := `CREATE TABLE IF NOT EXISTS blacklist(id TEXT, title TEXT, daemon TEXT);`
+	dbExec(cmd, dbFile)
+	s := Sonarr{}
+
+	purge := func(t *DelugeTorrent) {
+		e = t.pause()
+		if e != nil {
+			p("error during pause attempt: %s", e.Error())
+			//chkFatal(e)
+			return
+		}
+		e = t.remove(true)
+		if e != nil {
+			p("error during remove attempt: %s", e.Error())
+			//chkFatal(e)
+			return
+		}
+		p("blacklist torrent in sonarr: %s", t.name)
+		e = s.blacklist(t.name)
+		if e != nil {
+			p("sonarr blacklist failed for %s", t.name)
+			//chkFatal(e)
+			return
+		}
+	}
+
+	for {
+		if s.isOnline() {
+			staleTime := time.Now().Add(-1 * staleAge)
+			for _, d := range delugeDaemons {
+				torrents := d.getDownloading()
+				for _, torrent := range torrents {
+					if st.inBlacklist(&torrent) {
+						p("staleAge %v", staleAge)
+						p("timeAdded %s", torrent.timeAdded)
+						p("blacklisted torrent found in %s. Removing %s", torrent.deluge.name, torrent.name)
+						purge(&torrent)
+					} else if torrent.progress < 100 && torrent.timeAdded.Before(staleTime) {
+						p("staleAge %v", staleAge)
+						p("timeAdded %s", torrent.timeAdded)
+						p("torrent %s is stale: %f%% available after %d days.",
+							torrent.name, torrent.progress, int(time.Now().Sub(torrent.timeAdded).Hours()/24))
+						st.addToBlacklist(&torrent)
+						purge(&torrent)
+					}
+					//os.Exit(1)
+				}
+			}
+		} else {
+			p("sonarr is offline. skipping stale torrent check")
+		}
+		time.Sleep(staleInterval)
+	}
+}
+func (st *StaleTorrent) addToBlacklist(t *DelugeTorrent) {
+	cmd := "INSERT INTO blacklist VALUES(?, ?, ?);"
+	dbExec(cmd, dbFile, t.id, t.name, t.deluge.name)
+}
+func (st *StaleTorrent) inBlacklist(t *DelugeTorrent) bool {
+	result := dbQuery(`SELECT title FROM blacklist WHERE daemon = ?;`, dbFile, t.deluge.name)
+	return len(result) > 0
+}
+func (st *StaleTorrent) sonarrMarkFailed(t *DelugeTorrent) {
+
+}
+
 type TorFile struct{}
 
 func (tf *TorFile) start() {
 	p("torFile started and monitoring %s", torFolder)
 	for {
 		tf.getFiles()
-		time.Sleep(time.Duration(torFileInterval) * time.Second)
+		time.Sleep(torFileInterval)
 	}
 }
 func (tf *TorFile) getFiles() {
@@ -734,8 +1012,9 @@ func muxPreProc() {
 	}
 }
 func muxConvert() {
+	time.Sleep(convertStartDelay)
+	p("starting convert folder monitor")
 	for {
-		time.Sleep(time.Duration(convertInterval) * time.Second)
 		e := verifyFolder(convertFolder, probFolder, recycleFolder)
 		chkFatal(e)
 		if !isDirEmpty(convertFolder) {
@@ -751,20 +1030,21 @@ func muxConvert() {
 			chk(err)
 			rmEmptyFolders(convertFolder)
 		}
+		time.Sleep(convertInterval)
 	}
 }
 func recheckErrors() {
-	time.Sleep(30 * time.Second)
+	time.Sleep(errorCheckStartDelay)
 	p("starting errored torrents monitor")
 	for {
 		for _, d := range delugeDaemons {
 			d.recheckErrors()
 		}
-		time.Sleep(30 * time.Minute)
+		time.Sleep(errorCheckInterval)
 	}
 }
 func pruneTorrents() {
-	time.Sleep(20 * time.Second)
+	time.Sleep(pruneStartDelay)
 	p("starting prune torrents monitor")
 	for {
 		if !isSnapraidRunning() {
@@ -773,20 +1053,24 @@ func pruneTorrents() {
 					torrents := d.getTorrents()
 					for _, t := range torrents {
 						if t.timeSeeded > d.keepTime || (t.ratio > d.keepRatio && d.keepRatio != 0) {
-							p("torrent %s being removed from %s with ratio %f and seed time of %d days", t.name, d.name, t.ratio, t.timeSeeded/60/60/24)
-							_, e := t.remove()
-							chkFatal(e)
+							p("torrent %s being removed from %s with ratio %f and seed time of %d days",
+								t.name, d.name, t.ratio, t.timeSeeded.Hours()/24)
+							e := t.pause()
+							chk(e)
+							e = t.remove(true)
+
 						}
 					}
 				}
 			}
 		}
 
-		time.Sleep(6 * time.Hour)
+		time.Sleep(pruneInterval)
 	}
 }
 func finishTorrents() {
-	time.Sleep(time.Duration(3) * time.Second)
+	time.Sleep(finishStartDelay)
+	p("starting finished & stuck torrent monitors")
 	for {
 		for _, d := range delugeDaemons {
 			d.checkFinishedTorrents()
@@ -797,7 +1081,7 @@ func finishTorrents() {
 			muxPreProc()
 			mvTree(preProcFolder, procFolder, true)
 		}
-		time.Sleep(time.Duration(delugeInterval) * time.Second)
+		time.Sleep(finishInterval)
 	}
 }
 
@@ -807,6 +1091,7 @@ func main() {
 	parseConfig()
 	getDelugeClients()
 	go torFile.start()
+	go staleTorrent.start()
 	go muxConvert()
 	go pruneTorrents()
 	go finishTorrents()
@@ -974,4 +1259,6 @@ var (
 	getAltPath     = base.GetAltPath
 	isAny          = base.IsAny
 	fileExists     = base.FileExists
+	dbExec         = base.DbExec
+	dbQuery        = base.DqQuery
 )

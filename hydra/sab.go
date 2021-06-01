@@ -24,7 +24,7 @@ type SabHistory struct {
 }
 
 func (s *SabHistory) get() {
-	uri := fmt.Sprintf("http://%s:%s/sabnzbd/api/?output=json&apikey=%s&mode=history", sabIp, sabPort, sabApi)
+	uri := fmt.Sprintf("http://%s:%s/sabnzbd/api/?output=json&apikey=%s&mode=history", sabIp, sabPort, sabKey)
 	rsp, e := http.Get(uri)
 	chk(e)
 	defer func(r *http.Response) {

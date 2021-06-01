@@ -1,6 +1,8 @@
 set GOOS=linux
+set CGO_ENABLED=1
 cd "C:\Users\jeremy\Google Drive\go\src\server_tools\hydra"
-go build -ldflags="-s -w"
-wsl scp /mnt/c/Users/jeremy/Google\ Drive/go/src/server_tools/hydra/hydra 192.168.0.5:~
-REM wsl ssh 192.168.0.5 "sudo systemctl stop hydra && sudo mv hydra /usr/bin && sudo systemctl start hydra"
+wsl CGO_ENABLED=1 /usr/local/go/bin/go build -ldflags="-s -w"
+wsl scp hydra 192.168.0.5:~
+wsl ssh 192.168.0.5 "sudo systemctl stop hydra"
 wsl ssh 192.168.0.5 "sudo mv hydra /usr/local/bin"
+wsl ssh 192.168.0.5 "sudo systemctl start hydra"

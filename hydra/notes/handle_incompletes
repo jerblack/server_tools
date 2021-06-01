@@ -1,0 +1,26 @@
+need a plan for handling torrents that will never complete
+
+in each client check all torrents
+if torrent is
+    incomplete (still in downloading state)
+    added more than 1 month ago
+
+save hash, title, daemon_name to db  (blacklist table)
+remove torrent from deluge along with data
+
+find torrent in sonarr and mark download as failed
+    > curl -H "X-Api-Key: 123412341234" -s http://192.168.0.99:8989/api/v3/parse?title=Show.Title.S07E13.1080p.WEB.x264 | jq .episodes[].id
+    31083
+    > curl -H "X-Api-Key: 123412341234" -s http://192.168.0.99:8989/api/v3/history?sortKey=date\&sortDir=desc\&episodeId=31083 | jq '.records[]|"\(.date) - \(.id) - \(.eventType)"'
+    "2021-05-05T07:12:47.589244Z - 120569 - grabbed"
+    > curl -X POST -H "X-Api-Key: 123412341234" -H "Content-Length: 0" -H "Content-Type: application/json" http://192.168.0.99:8989/api/v3/history/failed/120569
+
+ensure than any new torrents added don't have same name
+    periodically enumerate all torrents and check for matching title in blacklist
+
+    if deluge torrent found in blacklist and in downloading state
+        delete from deluge with files
+        mark as failed in sonarr
+
+
+

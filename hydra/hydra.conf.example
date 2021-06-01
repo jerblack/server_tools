@@ -27,6 +27,20 @@ torrent_folder = /x/.config/_tor_new
 # Any file that generates errors or warnings during mux will be moved here
 problem_folder = /x/_mux_problems
 
+# sabnzbd configuration
+sab_ip =
+sab_port =
+sab_key =
+
+# sonarr configuration
+sonarr_ip =
+sonarr_port =
+sonarr_key =
+
+# number of days before a torrent is considered stale (will never finish)
+# and should be removed from deluge and blacklisted in sonarr
+stale_age = 28
+
 # each section below is a separate deluge daemon
 # daemon options:
 #   default = deluge where torrents sent by default if magnet or torrent file does not contain a matching tracker
