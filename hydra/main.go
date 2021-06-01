@@ -920,9 +920,6 @@ func (st *StaleTorrent) inBlacklist(t *DelugeTorrent) bool {
 	result := dbQuery(`SELECT title FROM blacklist WHERE daemon = ?;`, dbFile, t.deluge.name)
 	return len(result) > 0
 }
-func (st *StaleTorrent) sonarrMarkFailed(t *DelugeTorrent) {
-
-}
 
 type TorFile struct{}
 
