@@ -388,12 +388,12 @@ func (e *Email) Send() error {
 func DqQuery(query string, dbFile string, params ...interface{}) [][]interface{} {
 	db, err := sql.Open("sqlite3", dbFile)
 	ChkFatal(err)
-	//defer db.Close()
+	defer db.Close()
 	rows, _ := db.Query(query, params...)
-	cols, _ := rows.Columns()
-	n := len(cols)
 	defer rows.Close()
+	cols, _ := rows.Columns()
 	var results [][]interface{}
+	n := len(cols)
 	for rows.Next() {
 		resultPtrs := make([]interface{}, n)
 		result := make([]interface{}, n)
