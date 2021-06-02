@@ -5,8 +5,6 @@ TODO: MUX: watch remote folder, move new files into work path, convert, move to 
 TODO: MUX: investigate message "Consider increasing the value for the 'analyzeduration' and 'probesize' options"
 
 
-
-TODO: YT : build, monitor failures, auto retry, log failed
 TODO: KODI remote : web, play/pause/skip forward/stop/delete current
 TODO: KODI remote : auto move last played to .played subfolder on change
 
