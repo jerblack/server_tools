@@ -3,16 +3,16 @@ package main
 import . "github.com/jerblack/server_tools/base"
 
 var (
-	downloadArchive = "/home/jeremy/.config/yt/downloads.yt"
+	downloadArchive = "/x/.config/yt/downloads.yt"
 	rclonePath      = "google:go/src/server_tools/yt/"
-	rcloneConfig    = "/home/jeremy/.config/rclone/rclone.conf"
-	rclone          = "/usr/bin/rclone"
-	config          = "/home/jeremy/.config/yt/ytdl.conf"
+	rcloneConfig    = "/x/.config/yt/rclone.conf"
+	rclone          = "rclone"
+	config          = "/x/.config/yt/ytdl.conf"
 	playlists       = map[string]string{
 		"Paul Dinning":    "https://www.youtube.com/playlist?list=UUPJXfmxMYAoH02CFudZxmgg",
 		"Handsome Nature": "https://www.youtube.com/playlist?list=UUJLIwYrmwgwbTzgmB5yVc7Q",
 	}
-	ytDl = "/usr/bin/youtube-dl"
+	ytDl = "youtube-dl"
 )
 
 func main() {
