@@ -1051,7 +1051,7 @@ func pruneTorrents() {
 					for _, t := range torrents {
 						if t.timeSeeded > d.keepTime || (t.ratio > d.keepRatio && d.keepRatio != 0) {
 							p("torrent %s being removed from %s with ratio %f and seed time of %d days",
-								t.name, d.name, t.ratio, t.timeSeeded.Hours()/24)
+								t.name, d.name, t.ratio, int(t.timeSeeded.Hours()/24))
 							e := t.pause()
 							chk(e)
 							e = t.remove(true)
