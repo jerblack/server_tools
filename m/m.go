@@ -268,6 +268,7 @@ func getNameOptions(filePath string, clean string) []string {
 		proc/parent.ext
 	*/
 	var names []string
+	names = append(names, filePath)
 	ext := path.Ext(filePath)
 	parentPath, _ := path.Split(filePath)
 	parentPath = path.Clean(parentPath)
@@ -382,18 +383,25 @@ func main() {
 		add(&names, getNameOptions(mkv, file)...)
 		add(&names, getNameOptions(mkv, folder)...)
 		for i, name := range names {
-			fmt.Printf("  %d) %s\n", i+1, name)
+			fmt.Printf("  %d) %s\n", i, name)
 		}
 		nameIndex := getInt("select name [# or Enter to skip] ", len(names))
-		if nameIndex > 0 && nameIndex < len(names) {
-			selected := names[nameIndex-1]
-			fmt.Printf("| renamed: %s -> %s\n", mkv, selected)
-			err := os.Rename(mkv, selected)
-			chkFatal(err)
-			searchName = selected
+		if nameIndex >= 0 && nameIndex < len(names)+1 {
+			selected := names[nameIndex]
+			if nameIndex > 0 {
+				fmt.Printf("| renamed: %s -> %s\n", mkv, selected)
+				err := os.Rename(mkv, selected)
+				chkFatal(err)
+				searchName = selected
+			} else {
+				fmt.Println("| original name kept")
+				if len(names) > 0 {
+					searchName = names[1]
+				}
+			}
+
 		} else {
 			fmt.Println("| file name unchanged.")
-			continue
 		}
 
 		fName := filepath.Base(searchName)
@@ -406,6 +414,11 @@ func main() {
 			fmt.Printf("| genres: %s\n", strings.Join(tmdb.genres(), ", "))
 			fmt.Printf("| overview: %s\n", tmdb.Overview)
 			guess = recommends[tmdb.GenreIds[0]]
+			if tmdb.ReleaseDate.Year() < 1980 {
+				guess = "before_1980"
+			} else if tmdb.ReleaseDate.Year() < 2000 {
+				guess = "before_2000"
+			}
 
 			if title != tmdb.OriginalTitle {
 				fmt.Printf("tmdb title different from current title :\n")
@@ -422,6 +435,19 @@ func main() {
 					fmt.Println("| file name unchanged.")
 				}
 			}
+		}
+		if guess == "" && year != "" {
+			yearInt, e := strconv.Atoi(year)
+			if e == nil {
+				if yearInt < 1980 {
+					guess = "before_1980"
+				} else if yearInt < 2000 {
+					guess = "before_2000"
+				}
+			}
+		}
+		if strings.Contains(mkv, "2160") || strings.Contains(strings.ToLower(mkv), "4k") {
+			guess = "4K"
 		}
 
 		fmt.Println("folder options :")
