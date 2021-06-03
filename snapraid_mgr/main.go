@@ -39,7 +39,7 @@ func waitForSsdFlush() {
 func runSsdFlush() error {
 	// ssd_flush will email own log if error
 	p("running ssd_flush -f")
-	e := run("/usr/bin/ssd_flush", "-f")
+	e := run("/usr/local/bin/ssd_flush", "-f")
 	return e
 }
 func amIRunning() bool {

@@ -4,8 +4,8 @@
 Description=snapraid_mgr
 
 [Service]
-Type=oneshot
-ExecStart=/usr/bin/snapraid_mgr
+Type=simple
+ExecStart=/usr/local/bin/snapraid_mgr
 
 
 # systemd logs to journal by default, and all writes to stdout are visible in the journal
