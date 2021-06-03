@@ -64,7 +64,7 @@ func downloadVids() {
 	for id := range vidIds {
 		p("downloadVids received id: %s", id)
 		if inCache(id) {
-			p("video with id % was already downloaded. skipping", id)
+			p("video already downloaded. skipping %s", id)
 			continue
 		}
 		done := make(chan error, 1)
