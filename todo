@@ -8,7 +8,7 @@ TODO: MUX: investigate message "Consider increasing the value for the 'analyzedu
 TODO: KODI remote : web, play/pause/skip forward/stop/delete current
 TODO: KODI remote : auto move last played to .played subfolder on change
 
-
+TODO: YT: fail on download after timeout (1 hour)
 
 -- wait for more info --
 TODO: HYDRA: move files from sab folder to pre-proc if not picked up by sonarr after x time
