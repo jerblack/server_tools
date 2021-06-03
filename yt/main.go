@@ -3,10 +3,12 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	. "github.com/jerblack/server_tools/base"
 	"io"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -21,16 +23,17 @@ var (
 		"Paul Dinning":    "https://www.youtube.com/playlist?list=UUPJXfmxMYAoH02CFudZxmgg",
 		"Handsome Nature": "https://www.youtube.com/playlist?list=UUJLIwYrmwgwbTzgmB5yVc7Q",
 	}
-	ytDl           = "youtube-dl"
-	donePl, doneDl chan struct{}
-	vidIds         chan string
-	timeout        = 1 * time.Hour
-	archiveCache   []string
+	ytDl            = "youtube-dl"
+	numRecentVideos = 40
+	timeout         = 1 * time.Hour
+	donePl, doneDl  chan struct{}
+	vidIds          chan string
+	archiveCache    []string
 )
 
 func getIdsFromPlaylist(pl string) {
 	// https://www.yellowduck.be/posts/reading-command-output-line-by-line/
-	cmd := exec.Command(ytDl, "--get-id", pl)
+	cmd := exec.Command(ytDl, "--playlist-end", strconv.Itoa(numRecentVideos), "--get-id", pl)
 	r, _ := cmd.StdoutPipe()
 	done := make(chan struct{})
 	scanner := bufio.NewScanner(r)
@@ -69,7 +72,8 @@ func downloadVids() {
 		}
 		done := make(chan error, 1)
 
-		cmd := exec.Command(ytDl, "--config-location", config, id)
+		cmd := exec.Command(ytDl, "--config-location", config,
+			fmt.Sprintf("https://www.youtube.com/watch?v=%s", id))
 		var stdBuffer bytes.Buffer
 		mw := io.MultiWriter(os.Stdout, &stdBuffer)
 		cmd.Stdout = mw
