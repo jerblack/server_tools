@@ -25,6 +25,7 @@ var (
 	donePl, doneDl chan struct{}
 	vidIds         chan string
 	timeout        = 1 * time.Hour
+	archiveCache   []string
 )
 
 func getIdsFromPlaylist(pl string) {
@@ -51,8 +52,21 @@ func getIdsFromPlaylist(pl string) {
 func downloadVids() {
 	//https://stackoverflow.com/a/11886829/2934704
 
+	inCache := func(id string) bool {
+		for _, a := range archiveCache {
+			if id == a {
+				return true
+			}
+		}
+		return false
+	}
+
 	for id := range vidIds {
 		p("downloadVids received id: %s", id)
+		if inCache(id) {
+			p("video with id % was already downloaded. skipping")
+			continue
+		}
 		done := make(chan error, 1)
 
 		cmd := exec.Command(ytDl, "--config-location", config, id)
@@ -81,7 +95,23 @@ func downloadVids() {
 	doneDl <- struct{}{}
 }
 
+func cacheDlArchive() {
+	b, e := os.ReadFile(downloadArchive)
+	if e != nil {
+		p("error during cache of download archive: %s", e.Error())
+		return
+	}
+
+	lines := strings.Split(string(b), "\n")
+	for _, line := range lines {
+		line = strings.TrimPrefix(line, "youtube ")
+		line = strings.Trim(line, "\n\r")
+		archiveCache = append(archiveCache, line)
+	}
+}
+
 func main() {
+	cacheDlArchive()
 	donePl = make(chan struct{}, 1)
 	doneDl = make(chan struct{}, 1)
 	vidIds = make(chan string, 4096)
