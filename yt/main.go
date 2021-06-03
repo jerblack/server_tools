@@ -52,6 +52,7 @@ func downloadVids() {
 	//https://stackoverflow.com/a/11886829/2934704
 
 	for id := range vidIds {
+		p("downloadVids received id: %s", id)
 		done := make(chan error, 1)
 
 		cmd := exec.Command(ytDl, "--config-location", config, id)
