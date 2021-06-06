@@ -5,7 +5,7 @@ go 1.16
 require (
 	github.com/jerblack/go-libdeluge v0.5.5-0.20210422142137-f8aa57e57d6a
 	github.com/jerblack/server_tools/base v0.0.0-20210601185042-3f55294eff14
-	github.com/jerblack/server_tools/base.db v0.0.0-00010101000000-000000000000
+	github.com/jerblack/server_tools/base.db v0.0.0-20210606104326-1e88cd37b6a2
 )
 
 replace (
