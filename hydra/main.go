@@ -8,6 +8,7 @@ import (
 	"fmt"
 	delugeclient "github.com/jerblack/go-libdeluge"
 	"github.com/jerblack/server_tools/base"
+	base_db "github.com/jerblack/server_tools/base.db"
 	"io"
 	"net/http"
 	"os"
@@ -22,12 +23,9 @@ import (
 )
 
 var (
-	possibleConfs = []string{
-		"/run/secrets/hydra.conf",
-		"/etc/hydra.conf",
-		"/home/jeremy/.config/hydra/hydra.conf",
-	}
-	dbFile = "/home/jeremy/.config/hydra/hydra.db"
+	conf     = "/x/.config/hydra/hydra.conf"
+	dbFile   = "/x/.config/hydra/hydra.db"
+	keepFile = "/x/.config/hydra/hydra_keep"
 
 	procFolder, preProcFolder, convertFolder string
 	recycleFolder, torFolder, probFolder     string
@@ -450,6 +448,9 @@ func (d *Deluge) removeFinishedTorrents() {
 	torrents := d.getFinished()
 
 	for _, dt := range torrents {
+		if keepTorrent(dt.id) {
+			continue
+		}
 		p("torrent finished on %s: %s", d.name, dt.name)
 		e := dt.pause()
 		if e != nil {
@@ -582,17 +583,27 @@ func (dt *DelugeTorrent) moveStorage() error {
 	return dt.deluge.MoveStorage([]string{dt.id}, dt.deluge.seedFolder)
 }
 
-func parseConfig() {
-	var confFile string
-	for _, conf := range possibleConfs {
-		b, e := os.ReadFile(conf)
-		if e == nil {
-			confFile = string(b)
-			break
+func keepTorrent(id string) bool {
+	if fileExists(keepFile) {
+		keeps := getFile(keepFile)
+		for _, line := range strings.Split(keeps, "\n") {
+			if id == line {
+				return true
+			}
 		}
 	}
+	return false
+}
+
+func parseConfig() {
+	var confFile string
+	b, e := os.ReadFile(conf)
+	if e == nil {
+		confFile = string(b)
+	}
+
 	if confFile == "" {
-		p("no connected.conf file found in locations: %v", possibleConfs)
+		p("no conf file found at %s", conf)
 		os.Exit(1)
 	}
 
@@ -711,7 +722,7 @@ func parseConfig() {
 			}
 		}
 	}
-	e := verifyFolders()
+	e = verifyFolders()
 	chkFatal(e)
 }
 func getDelugeClients() {
@@ -1256,6 +1267,7 @@ var (
 	getAltPath     = base.GetAltPath
 	isAny          = base.IsAny
 	fileExists     = base.FileExists
-	dbExec         = base.DbExec
-	dbQuery        = base.DqQuery
+	getFile        = base.GetFile
+	dbExec         = base_db.DbExec
+	dbQuery        = base_db.DqQuery
 )
