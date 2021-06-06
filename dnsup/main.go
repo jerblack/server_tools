@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -42,18 +43,32 @@ var (
 )
 
 func loadConfig() {
+	conf := os.Getenv("CONFIG_FOLDER")
 	var confFile string
-
-	for _, conf := range possibleConfs {
+	if conf != "" {
+		conf = filepath.Join(conf, "dnsup.conf")
+		p("CONFIG_FOLDER environment variable set. loading conf file from %s", conf)
 		b, e := os.ReadFile(conf)
 		if e == nil {
 			confFile = string(b)
-			break
 		}
-	}
-	if confFile == "" {
-		p("no dnsup.conf file found in locations: %v", possibleConfs)
-		os.Exit(1)
+		if confFile == "" {
+			p("no conf file found at %s", conf)
+			os.Exit(1)
+		}
+
+	} else {
+		for _, conf := range possibleConfs {
+			b, e := os.ReadFile(conf)
+			if e == nil {
+				confFile = string(b)
+				break
+			}
+		}
+		if confFile == "" {
+			p("no dnsup.conf file found in locations: %v", possibleConfs)
+			os.Exit(1)
+		}
 	}
 
 	confFile = strings.TrimSpace(confFile)

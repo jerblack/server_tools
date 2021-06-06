@@ -38,13 +38,10 @@ import (
 */
 
 var (
+	// conf folder can also be specified in CONFIG_FOLDER environment variable
 	possibleConfs = []string{
 		"/run/secrets/connected.conf",
 		"/etc/connected.conf",
-	}
-	possibleWgs = []string{
-		"/run/secrets/wg.tar.gz",
-		"./wg.tar.gz",
 	}
 
 	wgFolder = "/etc/wireguard"
@@ -59,19 +56,34 @@ var (
 )
 
 func loadConfig() {
+	conf := os.Getenv("CONFIG_FOLDER")
 	var connectedConf string
-
-	for _, conf := range possibleConfs {
+	if conf != "" {
+		conf = filepath.Join(conf, "connected.conf")
+		p("CONFIG_FOLDER environment variable set. loading conf file from %s", conf)
 		b, e := os.ReadFile(conf)
 		if e == nil {
 			connectedConf = string(b)
-			break
+		}
+		if connectedConf == "" {
+			p("no conf file found at %s", conf)
+			os.Exit(1)
+		}
+
+	} else {
+		for _, conf := range possibleConfs {
+			b, e := os.ReadFile(conf)
+			if e == nil {
+				connectedConf = string(b)
+				break
+			}
+		}
+		if connectedConf == "" {
+			p("no connected.conf file found in locations: %v", possibleConfs)
+			os.Exit(1)
 		}
 	}
-	if connectedConf == "" {
-		p("no connected.conf file found in locations: %v", possibleConfs)
-		os.Exit(1)
-	}
+	connectedConf = strings.TrimSpace(connectedConf)
 
 	splitTunnelHosts = make(map[string][]string)
 	lines := strings.Split(connectedConf, "\n")
@@ -117,12 +129,42 @@ func loadConfig() {
 		splitTunnelHosts[k] = dnsLookup(k)
 	}
 }
-func extractWgTar() {
-	for _, wg := range possibleWgs {
-		_, e := os.Stat(wg)
-		if e == nil {
-			_ = run("tar", "-xvf", wg, "-C", "/")
+
+func copyWgConfs() {
+	e := os.MkdirAll(wgFolder, 0644)
+	chkFatal(e)
+	confFolder := os.Getenv("CONFIG_FOLDER")
+	if confFolder != "" {
+		srcPath := filepath.Join(confFolder, "wireguard")
+		f, e := os.ReadDir(srcPath)
+		chkFatal(e)
+		for _, wg := range f {
+			if !wg.IsDir() && strings.HasSuffix(strings.ToLower(wg.Name()), ".conf") {
+				srcFile := filepath.Join(srcPath, wg.Name())
+				dstFile := filepath.Join(wgFolder, wg.Name())
+				p("copying wireguard conf file: %s", srcFile)
+				in, e := os.Open(srcFile)
+				chkFatal(e)
+				out, e := os.Create(dstFile)
+				chkFatal(e)
+				_, e = io.Copy(out, in)
+				chkFatal(e)
+				e = in.Close()
+				chkFatal(e)
+				e = out.Sync()
+				chkFatal(e)
+				e = os.Chmod(dstFile, 0440)
+				chkFatal(e)
+				e = out.Close()
+				chkFatal(e)
+			}
 		}
+	}
+	f, e := os.ReadDir(wgFolder)
+	chkFatal(e)
+	if len(f) == 0 {
+		p("no wireguard conf files found in /etc/wireguard")
+		os.Exit(1)
 	}
 }
 
@@ -164,8 +206,6 @@ type WgConf struct {
 
 func readWgConfs() {
 	wgFiles, e := os.ReadDir(wgFolder)
-	chkFatal(e)
-	e = os.MkdirAll(wgFolder, 0770)
 	chkFatal(e)
 
 	rand.Seed(time.Now().UnixNano())
@@ -288,7 +328,8 @@ func fixIp() {
 }
 func main() {
 	loadConfig()
-	extractWgTar()
+
+	copyWgConfs()
 	p("connection monitor has awakened")
 
 	p("writing wireguard conf files")
