@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/jerblack/server_tools/base"
 	"io"
@@ -46,13 +47,20 @@ var (
 
 	wgFolder = "/etc/wireguard"
 
-	confs                                                                           []WgConf
-	ip, mask, gateway, localDns, remoteDns, remoteIp, localHostname, publicHostname string
-	heartbeatIp                                                                     = "1.1.1.1"
-	nic                                                                             = "eth0"
-	dnsTool                                                                         = "/usr/bin/dnsup"
-	splitTunnelHosts                                                                map[string][]string
-	splitTunnelIps                                                                  []string
+	confs                         []WgConf
+	ip, mask, gateway             string
+	httpPort                      string
+	localDns, remoteDns, remoteIp string
+	localHostname, publicHostname string
+	heartbeatIp                   = "1.1.1.1"
+	nic                           = "eth0"
+	dnsTool                       = "/usr/bin/dnsup"
+	splitTunnelHosts              map[string][]string
+	splitTunnelIps                []string
+	helpers                       []string
+
+	connFailed, nextPoker chan bool
+	newIp                 chan string
 )
 
 func loadConfig() {
@@ -99,6 +107,8 @@ func loadConfig() {
 			kv = strings.Split(v, "/")
 			ip = kv[0]
 			mask = kv[1]
+		case "port":
+			httpPort = v
 		case "remote_dns":
 			remoteDns = v
 		case "gateway":
@@ -123,6 +133,8 @@ func loadConfig() {
 			dnsTool = v
 		case "heartbeat_ip":
 			heartbeatIp = v
+		case "helpers":
+			helpers = append(helpers, strings.Split(v, " ")...)
 		}
 	}
 	for k := range splitTunnelHosts {
@@ -196,6 +208,44 @@ func dnsLookup(host string) []string {
 		return ips
 	}
 
+}
+
+type Web struct{}
+
+func (web *Web) start() {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ip", web.getIp)
+	mux.HandleFunc("/next", web.next)
+
+}
+func (web *Web) getIp(w http.ResponseWriter, r *http.Request) {
+	rsp := map[string]string{
+		"ip": remoteIp,
+	}
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	e := json.NewEncoder(w).Encode(rsp)
+	chk(e)
+}
+func (web *Web) next(w http.ResponseWriter, r *http.Request) {
+	for nextPoker == nil {
+		time.Sleep(1 * time.Second)
+	}
+	newIp = make(chan string)
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	nextPoker <- true
+	_ip := <-newIp
+	rsp := map[string]string{
+		"ip": _ip,
+	}
+	e := json.NewEncoder(w).Encode(rsp)
+	chk(e)
 }
 
 type WgConf struct {
@@ -274,30 +324,42 @@ func updateDNS() {
 		p("VPN public IP address looks like: %s", remoteIp)
 		e = run(dnsTool, publicHostname, remoteIp)
 		chkFatal(e)
+		if newIp != nil {
+			newIp <- remoteIp
+		}
 	}
 }
 func connect(conf WgConf) {
+	connFailed = make(chan bool)
+	nextPoker = make(chan bool)
 	p("connecting to wireguard server %s at %s", conf.name, conf.endpoint)
 	e := run("wg-quick", "up", conf.name)
 	chk(e)
 	updateDNS()
-	connected := true
 	p("checking connection every 60 seconds")
-	failed := 0
-	for connected {
-		time.Sleep(60 * time.Second)
-		cmd := exec.Command("ping", heartbeatIp, "-c", "1")
-		e = cmd.Run()
-		if e != nil {
-			failed++
-		} else {
-			failed = 0
+	go func() {
+		failed := 0
+		for {
+			time.Sleep(60 * time.Second)
+			cmd := exec.Command("ping", heartbeatIp, "-c", "1")
+			e = cmd.Run()
+			if e != nil {
+				failed++
+			} else {
+				failed = 0
+			}
+			if failed >= 3 {
+				connFailed <- true
+			}
 		}
-		if failed >= 3 {
-			p("connection verification failed, moving to next server")
-			connected = false
-		}
+	}()
+	select {
+	case <-connFailed:
+		p("connection verification failed, moving to next server")
+	case <-nextPoker:
+		p("helper marked connection failed, moving to next server")
 	}
+
 	e = run("wg-quick", "down", conf.name)
 	chk(e)
 }

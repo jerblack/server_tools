@@ -4,19 +4,30 @@ TODO: MUX: -mfa -> move finished file async instead of serially like -mf
 TODO: MUX: watch remote folder, move new files into work path, convert, move to new target with rel path
 TODO: MUX: investigate message "Consider increasing the value for the 'analyzeduration' and 'probesize' options"
 
+TODO: HYDRA: Handle  add public torrent file ...torrent failed: RPC error AddTorrentError('Torrent already in session (<hash>).')
+TODO: BACKLOG: Sonarr wanted list walker. 1 by 1 every few seconds tell sonarr to search for item in wanted list
+
 
 TODO: KODI remote : web, play/pause/skip forward/stop/delete current
 TODO: KODI remote : auto move last played to .played subfolder on change
 
-TODO: YT: fail on download after timeout (1 hour)
+TODO: YT: Move channel list to config file, add https://www.youtube.com/channel/UCA_Ct-5zDEOEnlxpjtitWXQ
+
+
+-- general todo --
+setup dnsmasq with local addresses in front of cloudflared
+
+
+------------
 
 -- wait for more info --
 TODO: HYDRA: move files from sab folder to pre-proc if not picked up by sonarr after x time
 TODO: MUX: auto fail stalled jobs (no cpu, no io for 3 minutes)
-
+TODO: MUX : MUX IS OUTPUTTING FILES WITH 90% REMOVED
 
 -- done but need to verify --
 TODO: HYDRA: find and remove stalled torrents (incomplete, availility < 1.0, added more than 1 month ago
 TODO: HYDRA: add conf option to auto-delete torrents after x days unfinished & mark in sonarr as dead
+TODO: YT: fail on download after timeout (1 hour)
 
 ---------------------
