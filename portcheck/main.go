@@ -30,16 +30,15 @@ func loadConfig() {
 	var conf string
 	if confPath != "" {
 		confPath = filepath.Join(confPath, "portcheck.conf")
-		p("CONFIG_FOLDER environment variable set. loading conf file from %s", conf)
+		p("CONFIG_FOLDER environment variable set. loading conf file from %s", confPath)
 		b, e := os.ReadFile(confPath)
 		if e == nil {
 			conf = string(b)
 		}
 		if conf == "" {
-			p("no conf file found at %s", confPath)
+			p("no config file found at %s", confPath)
 			os.Exit(1)
 		}
-
 	} else {
 		for _, c := range possibleConfs {
 			b, e := os.ReadFile(c)
@@ -78,9 +77,11 @@ type VPN struct {
 }
 
 func (v *VPN) get(endpoint string) {
-	rsp, e := http.Get(fmt.Sprintf("http://%s:%s/%s", intIp, httpPort, endpoint))
+	uri := fmt.Sprintf("http://%s:%s/%s", intIp, httpPort, endpoint)
+	p("connecting to %s", uri)
+	rsp, e := http.Get(uri)
 	chk(e)
-	if chk == nil {
+	if e == nil {
 		defer rsp.Body.Close()
 		e = json.NewDecoder(rsp.Body).Decode(v)
 		chk(e)
