@@ -31,7 +31,7 @@ func loadConfig() {
 	if confPath != "" {
 		confPath = filepath.Join(confPath, "portcheck.conf")
 		p("CONFIG_FOLDER environment variable set. loading conf file from %s", conf)
-		b, e := os.ReadFile(conf)
+		b, e := os.ReadFile(confPath)
 		if e == nil {
 			conf = string(b)
 		}
@@ -80,9 +80,12 @@ type VPN struct {
 func (v *VPN) get(endpoint string) {
 	rsp, e := http.Get(fmt.Sprintf("http://%s:%s/%s", intIp, httpPort, endpoint))
 	chk(e)
-	defer rsp.Body.Close()
-	e = json.NewDecoder(rsp.Body).Decode(v)
-	chk(e)
+	if chk == nil {
+		defer rsp.Body.Close()
+		e = json.NewDecoder(rsp.Body).Decode(v)
+		chk(e)
+	}
+
 }
 func (v *VPN) First() {
 	v.get("ip")

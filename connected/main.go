@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/jerblack/server_tools/base"
 	"io"
+	"log"
 	"math/rand"
 	"net"
 	"net/http"
@@ -58,6 +59,7 @@ var (
 	splitTunnelHosts              map[string][]string
 	splitTunnelIps                []string
 	helpers                       []string
+	helpersStarted                = false
 
 	connFailed, nextPoker chan bool
 	newIp                 chan string
@@ -210,13 +212,18 @@ func dnsLookup(host string) []string {
 
 }
 
+func startWeb() {
+	var w Web
+	w.start()
+}
+
 type Web struct{}
 
 func (web *Web) start() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ip", web.getIp)
 	mux.HandleFunc("/next", web.next)
-
+	log.Fatal(http.ListenAndServe(net.JoinHostPort(ip, httpPort), mux))
 }
 func (web *Web) getIp(w http.ResponseWriter, r *http.Request) {
 	rsp := map[string]string{
@@ -329,6 +336,17 @@ func updateDNS() {
 		}
 	}
 }
+func startHelpers() {
+	for _, helper := range helpers {
+		go func(h string) {
+			cmd := exec.Command(h)
+			e := cmd.Start()
+			chk(e)
+		}(helper)
+	}
+	helpersStarted = true
+}
+
 func connect(conf WgConf) {
 	connFailed = make(chan bool)
 	nextPoker = make(chan bool)
@@ -336,6 +354,9 @@ func connect(conf WgConf) {
 	e := run("wg-quick", "up", conf.name)
 	chk(e)
 	updateDNS()
+	if !helpersStarted {
+		startHelpers()
+	}
 	p("checking connection every 60 seconds")
 	go func() {
 		failed := 0
@@ -407,6 +428,7 @@ func main() {
 	}
 	p("adding routes")
 	makeRoutes()
+	go startWeb()
 	p("making first connection")
 	for {
 		for _, conf := range confs {
