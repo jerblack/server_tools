@@ -111,6 +111,7 @@ func checker() {
 			if nextCalled {
 				continue
 			}
+			//p("verifying port %s", port)
 			conn, e := net.DialTimeout("tcp", net.JoinHostPort(vpn.Ip, port), timeout)
 			chk(e)
 			if e != nil || conn == nil {
