@@ -143,6 +143,7 @@ func checker() {
 }
 
 func main() {
+	p("portcheck started")
 	loadConfig()
 	time.Sleep(startDelay)
 	for {

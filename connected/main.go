@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -339,7 +340,12 @@ func updateDNS() {
 func startHelpers() {
 	for _, helper := range helpers {
 		go func(h string) {
+			p("starting helper %s", h)
 			cmd := exec.Command(h)
+			var stdBuffer bytes.Buffer
+			mw := io.MultiWriter(os.Stdout, &stdBuffer)
+			cmd.Stdout = mw
+			cmd.Stderr = mw
 			e := cmd.Start()
 			chk(e)
 		}(helper)
