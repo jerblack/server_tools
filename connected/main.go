@@ -283,7 +283,7 @@ func makeRoutes() {
 		add(conf.endpoint)
 	}
 }
-func updateDNS() {
+func updateDnsHostname() {
 	if publicHostname != "" {
 		rsp, e := http.Get("https://ipv4.am.i.mullvad.net")
 		chk(e)
@@ -311,8 +311,10 @@ func connect(conf WgConf) {
 	p("connecting to wireguard server %s at %s", conf.name, conf.endpoint)
 	e := run("wg-quick", "up", conf.name)
 	chk(e)
+	p("setting up NAT and port forwarding")
+	enableNat()
 	setLocalDns(conf.dns)
-	updateDNS()
+	updateDnsHostname()
 
 	p("checking connection every 60 seconds")
 	go func() {
@@ -328,6 +330,7 @@ func connect(conf WgConf) {
 			}
 			if failed >= 3 {
 				connFailed <- true
+				return
 			}
 		}
 	}()
@@ -337,7 +340,8 @@ func connect(conf WgConf) {
 	case <-nextPoker:
 		p("connection marked as failed through /next endpoint, moving to next server")
 	}
-
+	p("disabling NAT")
+	disableNat()
 	e = run("wg-quick", "down", conf.name)
 	chk(e)
 }
@@ -366,9 +370,19 @@ func setLocalDns(dnsServer string) {
 	resolvConf := fmt.Sprintf("nameserver %s", dnsServer)
 	e := os.WriteFile("/etc/resolv.conf", []byte(resolvConf), 0444)
 	chkFatal(e)
+
+	p("enabling DNS relay from %s to server at %s", localIp, dnsServer)
+	cmds := []string{
+		fmt.Sprintf("iptables -t nat -A PREROUTING -p udp --dport 53 -j DNAT --to-destination %s:53", dnsServer),
+		fmt.Sprintf("iptables -t nat -A PREROUTING -p tcp --dport 53 -j DNAT --to-destination %s:53", dnsServer),
+	}
+	for _, cmd := range cmds {
+		e = run(strings.Split(cmd, " ")...)
+		chkFatal(e)
+	}
 }
 
-func setNat() {
+func enableNat() {
 	cmds := []string{
 		fmt.Sprintf("iptables -t nat -A POSTROUTING -o mullvad+ -s %s -j MASQUERADE", networkId),
 	}
@@ -384,7 +398,10 @@ func setNat() {
 		chkFatal(e)
 	}
 }
-
+func disableNat() {
+	e := run("iptables", "-t", "nat", "-F")
+	chkFatal(e)
+}
 func main() {
 	loadConfig()
 
@@ -404,8 +421,7 @@ func main() {
 	}
 	p("adding routes")
 	makeRoutes()
-	p("setting up NAT and port forwarding")
-	setNat()
+
 	go startWeb()
 	p("making first connection")
 	for {
