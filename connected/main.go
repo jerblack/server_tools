@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/jerblack/server_tools/base"
@@ -24,19 +22,19 @@ import (
 		copy all embedded wg/*.conf files to /etc/wireguard
 
 	enumerate conf files in wireguard folder
-		parse conf files into filename, basename, server ip
+		parse conf files into filename, basename, server localIp
 
 	iterate randomly through confs
-		for each endpoint ip, create route through gateway
+		for each endpoint localIp, create route through gateway
 	add direct route to local gateway for split tunneled servers
 
 	randomly select first connection
 		connect
 		verify connected
-		if connected, update cloudflare dns record with ip obtained from https://ipv4.am.i.mullvad.net
+		if connected, update cloudflare dns record with localIp obtained from https://ipv4.am.i.mullvad.net
 
 	monitor connection
-		every minute ping heartbeat ip, on 3 successive fails go to next connection
+		every minute ping heartbeat localIp, on 3 successive fails go to next connection
 
 */
 
@@ -50,27 +48,41 @@ var (
 	wgFolder = "/etc/wireguard"
 
 	confs                         []WgConf
-	ip, mask, gateway             string
+	localIp, mask, gateway        string
+	networkId                     string
 	httpPort                      string
-	localDns, remoteDns, remoteIp string
+	dnsServer, remoteIp           string
 	localHostname, publicHostname string
 	heartbeatIp                   = "1.1.1.1"
 	nic                           = "eth0"
 	dnsTool                       = "/usr/bin/dnsup"
-	splitTunnelHosts              map[string][]string
-	splitTunnelIps                []string
-	helpers                       []string
-	helpersStarted                = false
 
 	connFailed, nextPoker chan bool
 	newIp                 chan string
+	forwards              []*Forward
 )
 
+type Forward struct {
+	Proto, IntPort, ExtPort, Ip string
+}
+
+func (f *Forward) parse(s string) {
+	parts := strings.Split(s, " ")
+	if len(parts) != 4 {
+		log.Fatalf("invalid port forward specification: %s", s)
+	}
+	f.Proto = parts[0]
+	f.ExtPort = parts[1]
+	f.IntPort = parts[2]
+	f.Ip = parts[3]
+	forwards = append(forwards, f)
+}
+
 func loadConfig() {
-	conf := os.Getenv("CONFIG_FOLDER")
+	confFolder := os.Getenv("CONFIG_FOLDER")
 	var connectedConf string
-	if conf != "" {
-		conf = filepath.Join(conf, "connected.conf")
+	if confFolder != "" {
+		conf := filepath.Join(confFolder, "connected.conf")
 		p("CONFIG_FOLDER environment variable set. loading conf file from %s", conf)
 		b, e := os.ReadFile(conf)
 		if e == nil {
@@ -96,7 +108,6 @@ func loadConfig() {
 	}
 	connectedConf = strings.TrimSpace(connectedConf)
 
-	splitTunnelHosts = make(map[string][]string)
 	lines := strings.Split(connectedConf, "\n")
 	for _, line := range lines {
 		if strings.HasPrefix(line, "#") || !strings.Contains(line, "=") {
@@ -108,40 +119,28 @@ func loadConfig() {
 		switch k {
 		case "ip":
 			kv = strings.Split(v, "/")
-			ip = kv[0]
+			localIp = kv[0]
 			mask = kv[1]
+			_, n, _ := net.ParseCIDR(v)
+			networkId = n.String()
 		case "port":
 			httpPort = v
-		case "remote_dns":
-			remoteDns = v
+		case "dns_server":
+			dnsServer = v
 		case "gateway":
 			gateway = v
 		case "nic":
 			nic = v
-		case "split_tunnel_hosts":
-			if strings.Contains(v, ".") {
-				for _, h := range strings.Split(v, " ") {
-					if isIp(h) {
-						splitTunnelIps = append(splitTunnelIps, h)
-					} else {
-						splitTunnelHosts[h] = []string{}
-					}
-				}
-			}
-		case "local_dns":
-			localDns = v
 		case "hostname":
 			publicHostname = v
 		case "dns_tool":
 			dnsTool = v
 		case "heartbeat_ip":
 			heartbeatIp = v
-		case "helpers":
-			helpers = append(helpers, strings.Split(v, " ")...)
+		case "forward":
+			f := Forward{}
+			f.parse(v)
 		}
-	}
-	for k := range splitTunnelHosts {
-		splitTunnelHosts[k] = dnsLookup(k)
 	}
 }
 
@@ -187,31 +186,6 @@ func isIp(host string) bool {
 	re := regexp.MustCompile(`(\d{1,3}\.){3}\d{1,3}`)
 	return re.MatchString(host)
 }
-func dnsLookup(host string) []string {
-	var ips []string
-	if localDns != "" {
-		r := &net.Resolver{
-			PreferGo: true,
-			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-				d := net.Dialer{
-					Timeout: 5 * time.Second,
-				}
-				return d.DialContext(ctx, "udp", localDns+":53")
-			},
-		}
-		ips, e := r.LookupHost(context.Background(), host)
-		chkFatal(e)
-		return ips
-	} else {
-		result, e := net.LookupIP(host)
-		chkFatal(e)
-		for _, _ip := range result {
-			ips = append(ips, _ip.String())
-		}
-		return ips
-	}
-
-}
 
 func startWeb() {
 	var w Web
@@ -224,7 +198,7 @@ func (web *Web) start() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ip", web.getIp)
 	mux.HandleFunc("/next", web.next)
-	log.Fatal(http.ListenAndServe(net.JoinHostPort(ip, httpPort), mux))
+	log.Fatal(http.ListenAndServe(net.JoinHostPort(localIp, httpPort), mux))
 }
 func (web *Web) getIp(w http.ResponseWriter, r *http.Request) {
 	rsp := map[string]string{
@@ -260,6 +234,7 @@ type WgConf struct {
 	filename string
 	name     string
 	endpoint string
+	dns      string
 }
 
 func readWgConfs() {
@@ -287,6 +262,10 @@ func readWgConfs() {
 					line = strings.Split(line, ":")[0]
 					c.endpoint = line
 				}
+				if strings.HasPrefix(line, "DNS") {
+					line = strings.TrimPrefix(line, "DNS = ")
+					c.dns = line
+				}
 			}
 			confs = append(confs, c)
 
@@ -302,18 +281,6 @@ func makeRoutes() {
 	}
 	for _, conf := range confs {
 		add(conf.endpoint)
-	}
-	for _, a := range splitTunnelIps {
-		if isIp(a) {
-			add(a)
-		}
-	}
-	for _, ips := range splitTunnelHosts {
-		for _, i := range ips {
-			if isIp(i) {
-				add(i)
-			}
-		}
 	}
 }
 func updateDNS() {
@@ -337,21 +304,6 @@ func updateDNS() {
 		}
 	}
 }
-func startHelpers() {
-	for _, helper := range helpers {
-		go func(h string) {
-			p("starting helper %s", h)
-			cmd := exec.Command(h)
-			var stdBuffer bytes.Buffer
-			mw := io.MultiWriter(os.Stdout, &stdBuffer)
-			cmd.Stdout = mw
-			cmd.Stderr = mw
-			e := cmd.Start()
-			chk(e)
-		}(helper)
-	}
-	helpersStarted = true
-}
 
 func connect(conf WgConf) {
 	connFailed = make(chan bool)
@@ -359,10 +311,9 @@ func connect(conf WgConf) {
 	p("connecting to wireguard server %s at %s", conf.name, conf.endpoint)
 	e := run("wg-quick", "up", conf.name)
 	chk(e)
+	setLocalDns(conf.dns)
 	updateDNS()
-	if !helpersStarted {
-		startHelpers()
-	}
+
 	p("checking connection every 60 seconds")
 	go func() {
 		failed := 0
@@ -384,7 +335,7 @@ func connect(conf WgConf) {
 	case <-connFailed:
 		p("connection verification failed, moving to next server")
 	case <-nextPoker:
-		p("helper marked connection failed, moving to next server")
+		p("connection marked as failed through /next endpoint, moving to next server")
 	}
 
 	e = run("wg-quick", "down", conf.name)
@@ -395,38 +346,57 @@ func getHostname() {
 	chkFatal(e)
 	localHostname = strings.ReplaceAll(string(txt), "\n", "")
 }
-func fixIp() {
+func setStaticIp() {
 	cmds := []string{
 		"ip route del default",
 		fmt.Sprintf("ip addr flush dev %s", nic),
-		fmt.Sprintf("ip addr add %s/%s dev %s", ip, mask, nic),
+		fmt.Sprintf("ip addr add %s/%s dev %s", localIp, mask, nic),
 	}
 	for _, cmd := range cmds {
 		e := run(strings.Split(cmd, " ")...)
 		chkFatal(e)
 	}
 	p("writing /etc/hosts file")
-	hostFile := fmt.Sprintf("127.0.0.1 localhost\n%s %s\n", ip, localHostname)
+	hostFile := fmt.Sprintf("127.0.0.1 localhost\n%s %s\n", localIp, localHostname)
 	e := os.WriteFile("/etc/hosts", []byte(hostFile), 0444)
 	chkFatal(e)
-
+}
+func setLocalDns(dnsServer string) {
 	p("writing /etc/resolv.conf file")
-	resolvConf := fmt.Sprintf("nameserver %s", remoteDns)
-	e = os.WriteFile("/etc/resolv.conf", []byte(resolvConf), 0444)
+	resolvConf := fmt.Sprintf("nameserver %s", dnsServer)
+	e := os.WriteFile("/etc/resolv.conf", []byte(resolvConf), 0444)
 	chkFatal(e)
 }
+
+func setNat() {
+	cmds := []string{
+		fmt.Sprintf("iptables -t nat -A POSTROUTING -o mullvad+ -s %s -j MASQUERADE", networkId),
+	}
+	for _, f := range forwards {
+		pre := fmt.Sprintf("iptables -t nat -A PREROUTING -i mullvad+ -p %s --dport %s -j DNAT --to-destination %s:%s",
+			f.Proto, f.ExtPort, f.Ip, f.IntPort)
+		post := fmt.Sprintf("iptables -t nat -A POSTROUTING -p %s -d %s --dport %s -j SNAT --to-source %s",
+			f.Proto, f.Ip, f.IntPort, localIp)
+		cmds = append(cmds, pre, post)
+	}
+	for _, cmd := range cmds {
+		e := run(strings.Split(cmd, " ")...)
+		chkFatal(e)
+	}
+}
+
 func main() {
 	loadConfig()
 
 	copyWgConfs()
-	p("connection monitor has awakened")
+	p("connection monitor has started")
 
 	p("writing wireguard conf files")
 	readWgConfs()
 	getHostname()
 
 	p("setting ip information")
-	fixIp()
+	setStaticIp()
 
 	p("found %d conf files", len(confs))
 	for _, c := range confs {
@@ -434,6 +404,8 @@ func main() {
 	}
 	p("adding routes")
 	makeRoutes()
+	p("setting up NAT and port forwarding")
+	setNat()
 	go startWeb()
 	p("making first connection")
 	for {
