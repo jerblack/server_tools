@@ -8,6 +8,7 @@ import (
 	"github.com/schollz/progressbar/v3"
 	"io"
 	"log"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -380,4 +381,14 @@ func (e *Email) Send() error {
 	d := gomail.NewDialer(server, port, user, pass)
 	err = d.DialAndSend(m)
 	return err
+}
+
+func GetLocalIp() string {
+	conn, err := net.Dial("udp", "255.255.255.255:65535")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer conn.Close()
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+	return localAddr.IP.String()
 }
