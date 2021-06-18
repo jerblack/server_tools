@@ -2,6 +2,7 @@ package base
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"github.com/go-gomail/gomail"
@@ -391,4 +392,29 @@ func GetLocalIp() string {
 	defer conn.Close()
 	localAddr := conn.LocalAddr().(*net.UDPAddr)
 	return localAddr.IP.String()
+}
+func DnsQueryServer(host, dnsServer string) []string {
+	var ips []string
+	r := &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			d := net.Dialer{
+				Timeout: 5 * time.Second,
+			}
+			return d.DialContext(ctx, "udp", dnsServer+":53")
+		},
+	}
+	ips, e := r.LookupHost(context.Background(), host)
+	ChkFatal(e)
+	return ips
+}
+
+func DnsQuery(host string) []string {
+	var ips []string
+	result, e := net.LookupIP(host)
+	ChkFatal(e)
+	for _, ip := range result {
+		ips = append(ips, ip.String())
+	}
+	return ips
 }
