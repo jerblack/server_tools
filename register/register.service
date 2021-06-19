@@ -1,0 +1,23 @@
+# lives in /lib/systemd/system/register.service
+
+[Unit]
+Description=dynamic dns registration for docker containers
+Requires=docker.service
+After=docker.service
+
+StartLimitBurst=3
+
+[Service]
+Type=simple
+ExecStart=register
+User=jeremy
+Group=jeremy
+#Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+
+
+# systemd logs to journal by default, and all writes to stdout are visible in the journal
+# run the following to view logs for this service:
+#       journalctl -u register.service
