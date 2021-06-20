@@ -85,10 +85,16 @@ func (f *Forward) parse(s string) {
 	f.Ip = parts[3]
 	f.add()
 }
+func (f *Forward) String() string {
+	return fmt.Sprintf("%s: %s %s -> %s:%s", f.Host, f.Proto, f.ExtPort, f.Ip, f.IntPort)
+}
+
 func (f *Forward) add() {
+	p("add forward: %s", f)
 	forwards[f.Host] = append(forwards[f.Host], f)
 }
 func (f *Forward) remove() {
+	p("remove forward: %s", f)
 	var tmp []*Forward
 	for _, forward := range forwards[f.Host] {
 		if forward.ExtPort != f.ExtPort || forward.Proto != f.Proto {
@@ -102,6 +108,7 @@ func (f *Forward) remove() {
 	}
 }
 func (f *Forward) enable() {
+	p("enable forward: %s", f)
 	cmds := []string{
 		fmt.Sprintf("iptables -t nat -A PREROUTING -i mullvad+ -p %s --dport %s -j DNAT --to-destination %s:%s",
 			f.Proto, f.ExtPort, f.Ip, f.IntPort),
@@ -114,6 +121,7 @@ func (f *Forward) enable() {
 	}
 }
 func (f *Forward) disable() {
+	p("disable forward: %s", f)
 	cmds := []string{
 		fmt.Sprintf("iptables -t nat -D PREROUTING -i mullvad+ -p %s --dport %s -j DNAT --to-destination %s:%s",
 			f.Proto, f.ExtPort, f.Ip, f.IntPort),
