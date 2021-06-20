@@ -5,21 +5,23 @@ wireguard router and connection manager
 - automatically connect to random server from configured connections at startup
 - monitor connection and move to next server when current dies
 - NAT connection for network
-  - clients point default gateway to this router for route all traffic through VPN
+  - clients point default gateway to this router to route all traffic through VPN
 - kill switch if VPN connection drops. No connectivity without active VPN.
-- enable queries to VPN DNS server from network
+- enable queries to VPN DNS server from network. 
+  - clients set dns ip to router internal ip 
 - support ports forwarded from VPN server
   - static ports configured in conf file
   - dynamic ports configured by web api
 - register VPN IP in dns
   - uses external dns registration tool to register in cloudflare hosted dns
-###Config file
+
+### Config file
 Possible locations:
 - /run/secrets/connected.conf
 - /etc/connected.conf
 - folder specified in environment variable  CONFIG_FOLDER + connected.conf
 
-###API endpoint
+### API endpoint
 ```
 POST /cmd 
 ```
