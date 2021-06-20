@@ -1,7 +1,7 @@
 # lives in /lib/systemd/system/register.service
 
 [Unit]
-Description=dynamic dns registration for docker containers
+Description=dynamic dns registration and port forwarding for docker containers
 Requires=docker.service
 After=docker.service
 

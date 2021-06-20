@@ -7,7 +7,7 @@ require (
 	github.com/docker/docker v20.10.7+incompatible
 	github.com/docker/go-connections v0.4.0 // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
-	github.com/jerblack/server_tools/base v0.0.0-20210618191956-e6852431c7e3
+	github.com/jerblack/server_tools/base v0.0.0-20210620125807-8d25401009f9
 	github.com/moby/term v0.0.0-20210610120745-9d4ed1856297 // indirect
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/sirupsen/logrus v1.8.1 // indirect
