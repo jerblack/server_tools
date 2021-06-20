@@ -45,8 +45,6 @@ var (
 		"/etc/connected.conf",
 	}
 
-	wgFolder = "/etc/wireguard"
-
 	confs                         []WgConf
 	localIp, mask, gateway        string
 	networkId                     string
@@ -59,26 +57,76 @@ var (
 
 	connFailed, nextPoker chan bool
 	newIp                 chan string
-	forwards              []*Forward
+	forwards              map[string][]*Forward
+)
+
+const (
+	wgFolder      = "/etc/wireguard"
+	configForward = "-"
 )
 
 type Forward struct {
-	Proto, IntPort, ExtPort, Ip string
+	Host    string `json:"host"`
+	Proto   string `json:"proto"`
+	ExtPort string `json:"ext_port"`
+	IntPort string `json:"int_port"`
+	Ip      string `json:"ip"`
 }
 
 func (f *Forward) parse(s string) {
 	parts := strings.Split(s, " ")
-	if len(parts) != 4 {
+	if len(parts) != 5 {
 		log.Fatalf("invalid port forward specification: %s", s)
 	}
+	f.Host = configForward
 	f.Proto = parts[0]
 	f.ExtPort = parts[1]
 	f.IntPort = parts[2]
 	f.Ip = parts[3]
-	forwards = append(forwards, f)
+	f.add()
 }
-
+func (f *Forward) add() {
+	forwards[f.Host] = append(forwards[f.Host], f)
+}
+func (f *Forward) remove() {
+	var tmp []*Forward
+	for _, forward := range forwards[f.Host] {
+		if forward.ExtPort != f.ExtPort || forward.Proto != f.Proto {
+			tmp = append(tmp, f)
+		}
+	}
+	if len(tmp) == 0 {
+		delete(forwards, f.Host)
+	} else {
+		forwards[f.Host] = tmp
+	}
+}
+func (f *Forward) enable() {
+	cmds := []string{
+		fmt.Sprintf("iptables -t nat -A PREROUTING -i mullvad+ -p %s --dport %s -j DNAT --to-destination %s:%s",
+			f.Proto, f.ExtPort, f.Ip, f.IntPort),
+		fmt.Sprintf("iptables -t nat -A POSTROUTING -p %s -d %s --dport %s -j SNAT --to-source %s",
+			f.Proto, f.Ip, f.IntPort, localIp),
+	}
+	for _, cmd := range cmds {
+		e := run(strings.Split(cmd, " ")...)
+		chk(e)
+	}
+}
+func (f *Forward) disable() {
+	cmds := []string{
+		fmt.Sprintf("iptables -t nat -D PREROUTING -i mullvad+ -p %s --dport %s -j DNAT --to-destination %s:%s",
+			f.Proto, f.ExtPort, f.Ip, f.IntPort),
+		fmt.Sprintf("iptables -t nat -D POSTROUTING -p %s -d %s --dport %s -j SNAT --to-source %s",
+			f.Proto, f.Ip, f.IntPort, localIp),
+	}
+	for _, cmd := range cmds {
+		e := run(strings.Split(cmd, " ")...)
+		chkFatal(e)
+	}
+}
 func loadConfig() {
+	forwards = make(map[string][]*Forward)
 	confFolder := os.Getenv("CONFIG_FOLDER")
 	var connectedConf string
 	if confFolder != "" {
@@ -198,6 +246,7 @@ func (web *Web) start() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ip", web.getIp)
 	mux.HandleFunc("/next", web.next)
+	mux.HandleFunc("/cmd", web.cmd)
 	log.Fatal(http.ListenAndServe(net.JoinHostPort(localIp, httpPort), mux))
 }
 func (web *Web) getIp(w http.ResponseWriter, r *http.Request) {
@@ -228,6 +277,81 @@ func (web *Web) next(w http.ResponseWriter, r *http.Request) {
 	}
 	e := json.NewEncoder(w).Encode(rsp)
 	chk(e)
+}
+func (web *Web) cmd(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Content-Type", "application/json")
+	var c Cmd
+	e := json.NewDecoder(r.Body).Decode(&c)
+	chk(e)
+	e = r.Body.Close()
+	chk(e)
+	switch c.Action {
+	case "disable":
+		var forward *Forward
+		for _, f := range forwards[c.Host] {
+			if f.Proto == c.Proto && f.ExtPort == c.ExtPort {
+				forward = f
+			}
+		}
+		if forward != nil {
+			forward.disable()
+			forward.remove()
+			w.WriteHeader(http.StatusOK)
+			_, e = w.Write([]byte("ok"))
+			chk(e)
+		} else {
+			w.WriteHeader(http.StatusNotFound)
+			_, e = w.Write([]byte("no match found"))
+			chk(e)
+		}
+	case "enable":
+		if isAny("", c.Host, c.Ip, c.ExtPort, c.IntPort, c.Ip) {
+			w.WriteHeader(http.StatusBadRequest)
+			_, e = w.Write([]byte("missing required field"))
+			chk(e)
+		} else if c.Host == configForward {
+			w.WriteHeader(http.StatusBadRequest)
+			_, e = w.Write([]byte("invalid host"))
+			chk(e)
+		} else {
+			f := Forward{
+				Host:    c.Host,
+				Proto:   c.Proto,
+				ExtPort: c.ExtPort,
+				IntPort: c.IntPort,
+				Ip:      c.Ip,
+			}
+			f.add()
+			f.enable()
+			w.WriteHeader(http.StatusOK)
+			_, e = w.Write([]byte("ok"))
+			chk(e)
+		}
+	case "cleanup":
+		var cleanup []*Forward
+		for host, forward := range forwards {
+			if host != configForward {
+				for _, f := range forward {
+					cleanup = append(cleanup, f)
+				}
+			}
+		}
+		for _, f := range cleanup {
+			f.disable()
+			f.remove()
+		}
+		w.WriteHeader(http.StatusOK)
+		_, e = w.Write([]byte("ok"))
+		chk(e)
+	}
+
+}
+
+type Cmd struct {
+	Action string `json:"action"`
+	Forward
 }
 
 type WgConf struct {
@@ -383,24 +507,21 @@ func setLocalDns(dnsServer string) {
 }
 
 func enableNat() {
-	cmds := []string{
-		fmt.Sprintf("iptables -t nat -A POSTROUTING -o mullvad+ -s %s -j MASQUERADE", networkId),
-	}
-	for _, f := range forwards {
-		pre := fmt.Sprintf("iptables -t nat -A PREROUTING -i mullvad+ -p %s --dport %s -j DNAT --to-destination %s:%s",
-			f.Proto, f.ExtPort, f.Ip, f.IntPort)
-		post := fmt.Sprintf("iptables -t nat -A POSTROUTING -p %s -d %s --dport %s -j SNAT --to-source %s",
-			f.Proto, f.Ip, f.IntPort, localIp)
-		cmds = append(cmds, pre, post)
-	}
-	for _, cmd := range cmds {
-		e := run(strings.Split(cmd, " ")...)
-		chkFatal(e)
+	cmd := fmt.Sprintf("iptables -t nat -A POSTROUTING -o mullvad+ -s %s -j MASQUERADE", networkId)
+	e := run(strings.Split(cmd, " ")...)
+	chkFatal(e)
+	for _, forward := range forwards {
+		for _, f := range forward {
+			f.enable()
+		}
 	}
 }
 func disableNat() {
-	e := run("iptables", "-t", "nat", "-F")
-	chkFatal(e)
+	for _, forward := range forwards {
+		for _, f := range forward {
+			f.disable()
+		}
+	}
 }
 func main() {
 	loadConfig()
@@ -436,4 +557,5 @@ var (
 	chk      = base.Chk
 	chkFatal = base.ChkFatal
 	run      = base.Run
+	isAny    = base.IsAny
 )
