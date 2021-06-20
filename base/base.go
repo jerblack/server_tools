@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -382,6 +383,11 @@ func (e *Email) Send() error {
 	d := gomail.NewDialer(server, port, user, pass)
 	err = d.DialAndSend(m)
 	return err
+}
+
+func IsIp(host string) bool {
+	re := regexp.MustCompile(`(\d{1,3}\.){3}\d{1,3}`)
+	return re.MatchString(host)
 }
 
 func GetLocalIp() string {
