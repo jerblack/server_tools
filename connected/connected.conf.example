@@ -1,5 +1,3 @@
-# store connected.conf in .secrets folder before docker image build
-
 # required: sets the static ip address for the local host, specified in the format <ip>/<bit length of mask>
 # 192.168.20.2/24 for static ip of 192.168.20.2 with subnet mask of 255.255.255.0
 ip = 192.168.1.100/24

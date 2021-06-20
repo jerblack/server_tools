@@ -26,7 +26,6 @@ import (
 
 	iterate randomly through confs
 		for each endpoint localIp, create route through gateway
-	add direct route to local gateway for split tunneled servers
 
 	randomly select first connection
 		connect
@@ -252,40 +251,10 @@ type Web struct{}
 
 func (web *Web) start() {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/ip", web.getIp)
-	mux.HandleFunc("/next", web.next)
 	mux.HandleFunc("/cmd", web.cmd)
 	log.Fatal(http.ListenAndServe(net.JoinHostPort(localIp, httpPort), mux))
 }
-func (web *Web) getIp(w http.ResponseWriter, r *http.Request) {
-	rsp := map[string]string{
-		"ip": remoteIp,
-	}
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
 
-	e := json.NewEncoder(w).Encode(rsp)
-	chk(e)
-}
-func (web *Web) next(w http.ResponseWriter, r *http.Request) {
-	for nextPoker == nil {
-		time.Sleep(1 * time.Second)
-	}
-	newIp = make(chan string)
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	nextPoker <- true
-	_ip := <-newIp
-	rsp := map[string]string{
-		"ip": _ip,
-	}
-	e := json.NewEncoder(w).Encode(rsp)
-	chk(e)
-}
 func (web *Web) cmd(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
@@ -295,7 +264,24 @@ func (web *Web) cmd(w http.ResponseWriter, r *http.Request) {
 	chk(e)
 	e = r.Body.Close()
 	chk(e)
+	rsp := map[string]string{
+		"status": "ok",
+	}
 	switch c.Action {
+	case "ip":
+		rsp["ip"] = remoteIp
+		w.WriteHeader(http.StatusOK)
+		e := json.NewEncoder(w).Encode(rsp)
+		chk(e)
+	case "next":
+		for nextPoker == nil {
+			time.Sleep(1 * time.Second)
+		}
+		newIp = make(chan string)
+		ip := <-newIp
+		rsp["ip"] = ip
+		e := json.NewEncoder(w).Encode(rsp)
+		chk(e)
 	case "disable":
 		var forward *Forward
 		for _, f := range forwards[c.Host] {
@@ -307,21 +293,24 @@ func (web *Web) cmd(w http.ResponseWriter, r *http.Request) {
 			forward.disable()
 			forward.remove()
 			w.WriteHeader(http.StatusOK)
-			_, e = w.Write([]byte("ok"))
+			e := json.NewEncoder(w).Encode(rsp)
 			chk(e)
 		} else {
 			w.WriteHeader(http.StatusNotFound)
-			_, e = w.Write([]byte("no match found"))
+			rsp["status"] = "no match found"
+			e := json.NewEncoder(w).Encode(rsp)
 			chk(e)
 		}
 	case "enable":
 		if isAny("", c.Host, c.Ip, c.ExtPort, c.IntPort, c.Ip) {
 			w.WriteHeader(http.StatusBadRequest)
-			_, e = w.Write([]byte("missing required field"))
+			rsp["status"] = "missing required field"
+			e := json.NewEncoder(w).Encode(rsp)
 			chk(e)
 		} else if c.Host == configForward {
 			w.WriteHeader(http.StatusBadRequest)
-			_, e = w.Write([]byte("invalid host"))
+			rsp["status"] = "invalid host"
+			e := json.NewEncoder(w).Encode(rsp)
 			chk(e)
 		} else {
 			f := Forward{
@@ -334,7 +323,7 @@ func (web *Web) cmd(w http.ResponseWriter, r *http.Request) {
 			f.add()
 			f.enable()
 			w.WriteHeader(http.StatusOK)
-			_, e = w.Write([]byte("ok"))
+			e := json.NewEncoder(w).Encode(rsp)
 			chk(e)
 		}
 	case "cleanup":
@@ -351,10 +340,9 @@ func (web *Web) cmd(w http.ResponseWriter, r *http.Request) {
 			f.remove()
 		}
 		w.WriteHeader(http.StatusOK)
-		_, e = w.Write([]byte("ok"))
+		e := json.NewEncoder(w).Encode(rsp)
 		chk(e)
 	}
-
 }
 
 type Cmd struct {
