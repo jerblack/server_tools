@@ -11,9 +11,11 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -53,10 +55,15 @@ var (
 	heartbeatIp                   = "1.1.1.1"
 	nic                           = "eth0"
 	dnsTool                       = "/usr/bin/dnsup"
+	configFilename                = "connected.conf"
+	forwardPath                   = "/var/lib/connected/"
+	forwardFilename               = "forwards.conf"
+	forwardFile                   string
 
 	connFailed, nextPoker chan bool
 	newIp                 chan string
 	forwards              map[string][]*Forward
+	signalChan            chan os.Signal
 )
 
 const (
@@ -74,16 +81,60 @@ type Forward struct {
 
 func (f *Forward) parse(s string) {
 	parts := strings.Split(s, " ")
-	if len(parts) != 5 {
+	if len(parts) == 4 {
+		f.Host = configForward
+		f.Proto = parts[0]
+		f.ExtPort = parts[1]
+		f.IntPort = parts[2]
+		f.Ip = parts[3]
+	} else if len(parts) == 5 {
+		f.Host = parts[0]
+		f.Proto = parts[1]
+		f.ExtPort = parts[2]
+		f.IntPort = parts[3]
+		f.Ip = parts[4]
+	} else {
 		log.Fatalf("invalid port forward specification: %s", s)
 	}
-	f.Host = configForward
-	f.Proto = parts[0]
-	f.ExtPort = parts[1]
-	f.IntPort = parts[2]
-	f.Ip = parts[3]
 	f.add()
 }
+
+func (f *Forward) save() {
+	rule := fmt.Sprintf("%s %s %s %s %s", f.Host, f.Proto, f.ExtPort, f.IntPort, f.Ip)
+	lines := []string{rule}
+	if fileExists(forwardFile) {
+		b, e := os.ReadFile(forwardFile)
+		chkFatal(e)
+		for _, line := range strings.Split(string(b), "\n") {
+			if line != rule && line != "" {
+				lines = append(lines, line)
+			}
+		}
+	}
+	e := os.WriteFile(forwardFile, []byte(strings.Join(lines, "\n")), 0664)
+	chkFatal(e)
+}
+func (f *Forward) unsave() {
+	rule := fmt.Sprintf("%s %s %s %s %s", f.Host, f.Proto, f.ExtPort, f.IntPort, f.Ip)
+	var lines []string
+	if fileExists(forwardFile) {
+		b, e := os.ReadFile(forwardFile)
+		chkFatal(e)
+		for _, line := range strings.Split(string(b), "\n") {
+			if line != rule && line != "" {
+				lines = append(lines, line)
+			}
+		}
+	}
+	if len(lines) > 0 {
+		e := os.WriteFile(forwardFile, []byte(strings.Join(lines, "\n")), 0664)
+		chkFatal(e)
+	} else if len(lines) == 0 {
+		e := os.Remove(forwardFile)
+		chkFatal(e)
+	}
+}
+
 func (f *Forward) String() string {
 	return fmt.Sprintf("%s: %s %s -> %s:%s", f.Host, f.Proto, f.ExtPort, f.Ip, f.IntPort)
 }
@@ -137,7 +188,7 @@ func loadConfig() {
 	confFolder := os.Getenv("CONFIG_FOLDER")
 	var connectedConf string
 	if confFolder != "" {
-		conf := filepath.Join(confFolder, "connected.conf")
+		conf := filepath.Join(confFolder, configFilename)
 		p("CONFIG_FOLDER environment variable set. loading conf file from %s", conf)
 		b, e := os.ReadFile(conf)
 		if e == nil {
@@ -147,6 +198,7 @@ func loadConfig() {
 			p("no conf file found at %s", conf)
 			os.Exit(1)
 		}
+		forwardFile = filepath.Join(confFolder, forwardFilename)
 
 	} else {
 		for _, conf := range possibleConfs {
@@ -160,6 +212,9 @@ func loadConfig() {
 			p("no connected.conf file found in locations: %v", possibleConfs)
 			os.Exit(1)
 		}
+		e := os.MkdirAll(forwardPath, 0664)
+		chkFatal(e)
+		forwardFile = filepath.Join(forwardPath, forwardFilename)
 	}
 	connectedConf = strings.TrimSpace(connectedConf)
 
@@ -195,6 +250,15 @@ func loadConfig() {
 		case "forward":
 			f := Forward{}
 			f.parse(v)
+		}
+	}
+
+	if fileExists(forwardFile) {
+		b, e := os.ReadFile(forwardFile)
+		chkFatal(e)
+		for _, line := range strings.Split(string(b), "\n") {
+			f := Forward{}
+			f.parse(line)
 		}
 	}
 }
@@ -295,6 +359,7 @@ func (web *Web) cmd(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			e := json.NewEncoder(w).Encode(rsp)
 			chk(e)
+			forward.unsave()
 		} else {
 			w.WriteHeader(http.StatusNotFound)
 			rsp["status"] = "no match found"
@@ -325,6 +390,7 @@ func (web *Web) cmd(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			e := json.NewEncoder(w).Encode(rsp)
 			chk(e)
+			f.save()
 		}
 	case "cleanup":
 		var cleanup []*Forward
@@ -338,6 +404,7 @@ func (web *Web) cmd(w http.ResponseWriter, r *http.Request) {
 		for _, f := range cleanup {
 			f.disable()
 			f.remove()
+			f.unsave()
 		}
 		w.WriteHeader(http.StatusOK)
 		e := json.NewEncoder(w).Encode(rsp)
@@ -459,6 +526,19 @@ func connect(conf WgConf) {
 		p("connection verification failed, moving to next server")
 	case <-nextPoker:
 		p("connection marked as failed through /next endpoint, moving to next server")
+	case <-signalChan:
+		p("exiting. doing cleanup.")
+		for _, forward := range forwards {
+			for _, f := range forward {
+				f.disable()
+			}
+		}
+		p("disabling NAT")
+		disableNat()
+		e = run("wg-quick", "down", conf.name)
+		chk(e)
+		os.Exit(0)
+
 	}
 	p("disabling NAT")
 	disableNat()
@@ -520,6 +600,15 @@ func disableNat() {
 	}
 }
 func main() {
+	signalChan = make(chan os.Signal, 1)
+	signal.Notify(
+		signalChan,
+		syscall.SIGHUP,  // kill -SIGHUP XXXX
+		syscall.SIGINT,  // kill -SIGINT XXXX or Ctrl+c
+		syscall.SIGQUIT, // kill -SIGQUIT XXXX
+		syscall.SIGTERM, // shutdown service
+	)
+
 	loadConfig()
 
 	copyWgConfs()
@@ -549,9 +638,10 @@ func main() {
 }
 
 var (
-	p        = base.P
-	chk      = base.Chk
-	chkFatal = base.ChkFatal
-	run      = base.Run
-	isAny    = base.IsAny
+	p          = base.P
+	chk        = base.Chk
+	chkFatal   = base.ChkFatal
+	run        = base.Run
+	isAny      = base.IsAny
+	fileExists = base.FileExists
 )
