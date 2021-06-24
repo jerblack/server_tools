@@ -406,7 +406,7 @@ type Host struct {
 
 func (h *Host) unregA() {
 	p("unregistering A record: %s -> %s", h.Host, h.Ip)
-	args := fmt.Sprintf("update del %s A %s\nsend\nquit\n", h.Host, h.Ip)
+	args := fmt.Sprintf("update del %s A %s", h.Host, h.Ip)
 	runNsUpdate(args)
 }
 func (h *Host) unregPtr() {
@@ -414,17 +414,17 @@ func (h *Host) unregPtr() {
 		return
 	}
 	p("unregistering PTR record: %s -> %s", getPtr(h.Ip), h.Host)
-	args := fmt.Sprintf("update del %s PTR %s\nsend\nquit\n", getPtr(h.Ip), h.Host)
+	args := fmt.Sprintf("update del %s PTR %s", getPtr(h.Ip), h.Host)
 	runNsUpdate(args)
 }
 func (h *Host) unregCname() {
 	p("unregistering CNAME record: %s -> %s", h.Host, h.Alias)
-	args := fmt.Sprintf("update del %s CNAME %s\nsend\nquit\n", h.Host, h.Alias)
+	args := fmt.Sprintf("update del %s CNAME %s", h.Host, h.Alias)
 	runNsUpdate(args)
 }
 func (h *Host) regA() {
 	p("registering A record: %s -> %s", h.Host, h.Ip)
-	args := fmt.Sprintf("update add %s %d IN A %s\nsend\nquit\n", h.Host, ttl, h.Ip)
+	args := fmt.Sprintf("update add %s %d IN A %s", h.Host, ttl, h.Ip)
 	runNsUpdate(args)
 }
 func (h *Host) regPtr() {
@@ -432,12 +432,12 @@ func (h *Host) regPtr() {
 		return
 	}
 	p("registering PTR record: %s -> %s", getPtr(h.Ip), h.Host)
-	args := fmt.Sprintf("update add %s %d IN PTR %s\nsend\nquit\n", getPtr(h.Ip), ttl, h.Host)
+	args := fmt.Sprintf("update add %s %d IN PTR %s", getPtr(h.Ip), ttl, h.Host)
 	runNsUpdate(args)
 }
 func (h *Host) regCname() {
 	p("registering CNAME record: %s -> %s", h.Host, h.Alias)
-	args := fmt.Sprintf("update add %s %d IN CNAME %s\nsend\nquit\n", h.Host, ttl, h.Alias)
+	args := fmt.Sprintf("update add %s %d IN CNAME %s", h.Host, ttl, h.Alias)
 	runNsUpdate(args)
 }
 
@@ -473,10 +473,14 @@ func (h *Host) register() {
 
 }
 
-func runNsUpdate(args string) {
-	if dnsServer != "" {
-		args = fmt.Sprintf("server %s\n%s", dnsServer, args)
+func runNsUpdate(arg string) {
+	args := []string{
+		"check-names off",
 	}
+	if dnsServer != "" {
+		args = append(args, fmt.Sprintf("server %s", dnsServer))
+	}
+	args = append(args, arg, "send", "quit")
 	cmd := exec.Command("nsupdate")
 	in, e := cmd.StdinPipe()
 	if e != nil {
@@ -484,7 +488,7 @@ func runNsUpdate(args string) {
 	}
 	go func() {
 		defer in.Close()
-		_, e = in.Write([]byte(args))
+		_, e = in.Write([]byte(strings.Join(args, "\n") + "\n"))
 		if e != nil {
 			panic(e)
 		}
