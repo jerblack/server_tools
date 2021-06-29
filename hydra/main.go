@@ -283,7 +283,18 @@ func (d *Deluge) AddTorrentMagnet(magnetPath string) {
 	}
 	rsp := <-d.response
 	if rsp.err != nil {
-		p("add magnet file failed: %s", rsp.err.Error())
+		if strings.Contains(rsp.err.Error(), "Torrent already in session") {
+			p("add %s magnet file %s failed. magnet is already in client.", d.name, magnetPath)
+			rec := strings.Replace(magnetPath, torFolder, recycleFolder, 1)
+			rec = getAltPath(rec)
+			e := verifyFolder(filepath.Dir(rec))
+			chkFatal(e)
+			e = os.Rename(magnetPath, rec)
+			chkFatal(e)
+		} else {
+			p("add magnet file failed: %s", rsp.err.Error())
+		}
+
 	} else {
 		p("add %s magnet file successful: %s", d.name, rsp.hash)
 		rec := strings.Replace(magnetPath, torFolder, recycleFolder, 1)
@@ -302,7 +313,18 @@ func (d *Deluge) AddTorrentFile(torrentPath string) {
 	}
 	rsp := <-d.response
 	if rsp.err != nil {
-		p("add %s torrent file %s failed: %s", d.name, torrentPath, rsp.err.Error())
+		if strings.Contains(rsp.err.Error(), "Torrent already in session") {
+			p("add %s torrent file %s failed. torrent is already in client.", d.name, torrentPath)
+			rec := strings.Replace(torrentPath, torFolder, recycleFolder, 1)
+			rec = getAltPath(rec)
+			e := verifyFolder(filepath.Dir(rec))
+			chkFatal(e)
+			e = os.Rename(torrentPath, rec)
+			chkFatal(e)
+		} else {
+			p("add %s torrent file %s failed: %s", d.name, torrentPath, rsp.err.Error())
+		}
+
 	} else {
 		p("add %s torrent file successful: %s", d.name, rsp.hash)
 		rec := strings.Replace(torrentPath, torFolder, recycleFolder, 1)
@@ -1099,7 +1121,7 @@ func main() {
 	parseConfig()
 	getDelugeClients()
 	go torFile.start()
-	go staleTorrent.start()
+	//go staleTorrent.start()
 	go muxConvert()
 	go pruneTorrents()
 	go finishTorrents()
