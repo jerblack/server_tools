@@ -1,0 +1,85 @@
+
+iterate through all shows in sonarr
+for each show
+    tell sonarr to search for upgraded copies of the episodes in the show
+    wait between each request to ensure previous request is finished
+        step 1
+        query for active sonarr tasks
+        if none, move to next step
+        step 2
+        query sab to see if queue is empty
+        if empty move to next show
+
+-- initiate sonarr search
+curl -X POST -s 'http://sonarr/api/v3/command' -H "Content-Type: application/json" -H "X-Api-Key: $SONARR_KEY" \
+-d '{"name":"SeriesSearch","seriesId":29}'
+
+
+-- get all shows
+curl -s 'http://sonarr/api/v3/series' -H 'Accept: application/json' -H "X-Api-Key: $SONARR_KEY" | jq -r '.[] | {title: .title, id: .id}'
+
+
+-- get sabnzbd queue
+curl -s "http://sabnzbd/sabnzbd/api/?output=json&apikey=$SABNZBD_KEY&mode=queue" | jq -r .queue.noofslots_total
+33 <- number items in queue
+curl -s "http://sabnzbd/sabnzbd/api/?output=json&apikey=$SABNZBD_KEY&mode=queue" | jq -r .queue.status
+Downloading
+
+
+-- show current tasks
+curl 'http://sonarr/api/v3/command' -H 'Accept: application/json' -H 'X-Api-Key: $SONARR_KEY'
+
+[
+ {
+    "name": "SeriesSearch",
+    "commandName": "Series Search",
+    "message": "Report sent to sabnzbd. Fear.the.Walking.Dead.S03E05.1080p.BluRay.x264-SHORTBREHD",
+    "body": {
+      "seriesId": 467,
+      "sendUpdatesToClient": true,
+      "updateScheduledTask": true,
+      "completionMessage": "Completed",
+      "requiresDiskAccess": false,
+      "isExclusive": false,
+      "name": "SeriesSearch",
+      "trigger": "manual",
+      "suppressMessages": false,
+      "clientUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    },
+    "priority": "normal",
+    "status": "started",
+    "queued": "2021-06-28T01:35:11.427743Z",
+    "started": "2021-06-28T01:35:11.429725Z",
+    "trigger": "manual",
+    "stateChangeTime": "2021-06-28T01:35:11.429725Z",
+    "sendUpdatesToClient": true,
+    "updateScheduledTask": true,
+    "id": 230808
+  },
+  {
+    "name": "RefreshMonitoredDownloads",
+    "commandName": "Refresh Monitored Downloads",
+    "message": "Completed",
+    "body": {
+      "sendUpdatesToClient": false,
+      "updateScheduledTask": true,
+      "completionMessage": "Completed",
+      "requiresDiskAccess": false,
+      "isExclusive": false,
+      "name": "RefreshMonitoredDownloads",
+      "trigger": "unspecified",
+      "suppressMessages": false
+    },
+    "priority": "normal",
+    "status": "completed",
+    "queued": "2021-06-28T01:35:20.615617Z",
+    "started": "2021-06-28T01:35:20.619208Z",
+    "ended": "2021-06-28T01:35:20.970718Z",
+    "duration": "00:00:00.3515100",
+    "trigger": "unspecified",
+    "stateChangeTime": "2021-06-28T01:35:20.619208Z",
+    "sendUpdatesToClient": false,
+    "updateScheduledTask": true,
+    "id": 230809
+  },
+]
