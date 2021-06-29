@@ -24,18 +24,18 @@ import (
 		copy all embedded wg/*.conf files to /etc/wireguard
 
 	enumerate conf files in wireguard folder
-		parse conf files into filename, basename, server localIp
+		parse conf files into filename, basename, server localInIp
 
 	iterate randomly through confs
-		for each endpoint localIp, create route through gateway
+		for each endpoint localInIp, create route through gateway
 
 	randomly select first connection
 		connect
 		verify connected
-		if connected, update cloudflare dns record with localIp obtained from https://ipv4.am.i.mullvad.net
+		if connected, update cloudflare dns record with localInIp obtained from https://ipv4.am.i.mullvad.net
 
 	monitor connection
-		every minute ping heartbeat localIp, on 3 successive fails go to next connection
+		every minute ping heartbeat localInIp, on 3 successive fails go to next connection
 
 */
 
@@ -47,13 +47,16 @@ var (
 	}
 
 	confs                         []WgConf
-	localIp, mask, gateway        string
-	networkId                     string
+	localInIp, maskIn             string
+	localOutIp, maskOut           string
+	networkIdIn, networkIdOut     string
+	gateway                       string
 	httpPort                      string
 	dnsServer, remoteIp           string
 	localHostname, publicHostname string
 	heartbeatIp                   = "1.1.1.1"
-	nic                           = "eth0"
+	nicIn                         = "eth0"
+	nicOut                        string
 	dnsTool                       = "/usr/bin/dnsup"
 	configFilename                = "connected.conf"
 	forwardPath                   = "/var/lib/connected/"
@@ -163,7 +166,7 @@ func (f *Forward) enable() {
 		fmt.Sprintf("iptables -t nat -A PREROUTING -i mullvad+ -p %s --dport %s -j DNAT --to-destination %s:%s",
 			f.Proto, f.ExtPort, f.Ip, f.IntPort),
 		fmt.Sprintf("iptables -t nat -A POSTROUTING -p %s -d %s --dport %s -j SNAT --to-source %s",
-			f.Proto, f.Ip, f.IntPort, localIp),
+			f.Proto, f.Ip, f.IntPort, localInIp),
 	}
 	for _, cmd := range cmds {
 		e := run(strings.Split(cmd, " ")...)
@@ -176,7 +179,7 @@ func (f *Forward) disable() {
 		fmt.Sprintf("iptables -t nat -D PREROUTING -i mullvad+ -p %s --dport %s -j DNAT --to-destination %s:%s",
 			f.Proto, f.ExtPort, f.Ip, f.IntPort),
 		fmt.Sprintf("iptables -t nat -D POSTROUTING -p %s -d %s --dport %s -j SNAT --to-source %s",
-			f.Proto, f.Ip, f.IntPort, localIp),
+			f.Proto, f.Ip, f.IntPort, localInIp),
 	}
 	for _, cmd := range cmds {
 		e := run(strings.Split(cmd, " ")...)
@@ -227,20 +230,28 @@ func loadConfig() {
 		k := strings.ToLower(strings.TrimSpace(kv[0]))
 		v := strings.TrimSpace(kv[1])
 		switch k {
-		case "ip":
+		case "ip_in":
 			kv = strings.Split(v, "/")
-			localIp = kv[0]
-			mask = kv[1]
+			localInIp = kv[0]
+			maskIn = kv[1]
 			_, n, _ := net.ParseCIDR(v)
-			networkId = n.String()
+			networkIdIn = n.String()
+		case "ip_out":
+			kv = strings.Split(v, "/")
+			localOutIp = kv[0]
+			maskOut = kv[1]
+			_, n, _ := net.ParseCIDR(v)
+			networkIdOut = n.String()
 		case "port":
 			httpPort = v
 		case "dns_server":
 			dnsServer = v
 		case "gateway":
 			gateway = v
-		case "nic":
-			nic = v
+		case "nic_in":
+			nicIn = v
+		case "nic_out":
+			nicOut = v
 		case "hostname":
 			publicHostname = v
 		case "dns_tool":
@@ -251,6 +262,9 @@ func loadConfig() {
 			f := Forward{}
 			f.parse(v)
 		}
+	}
+	if nicOut == "" {
+		nicOut = nicIn
 	}
 
 	if fileExists(forwardFile) {
@@ -316,7 +330,7 @@ type Web struct{}
 func (web *Web) start() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/cmd", web.cmd)
-	log.Fatal(http.ListenAndServe(net.JoinHostPort(localIp, httpPort), mux))
+	log.Fatal(http.ListenAndServe(net.JoinHostPort(localInIp, httpPort), mux))
 }
 
 func (web *Web) cmd(w http.ResponseWriter, r *http.Request) {
@@ -460,9 +474,20 @@ func readWgConfs() {
 	}
 }
 
+func waitForOutNic() {
+	for {
+		_, e := net.InterfaceByName(nicOut)
+		if e == nil {
+			return
+		}
+		p("waiting for %s to appear in container", nicOut)
+		time.Sleep(3 * time.Second)
+	}
+}
+
 func makeRoutes() {
 	add := func(addr string) {
-		cmd := []string{"ip", "route", "add", addr, "via", gateway, "dev", nic}
+		cmd := []string{"ip", "route", "add", addr, "via", gateway, "dev", nicOut}
 		e := run(cmd...)
 		chkFatal(e)
 	}
@@ -553,15 +578,23 @@ func getHostname() {
 func setStaticIp() {
 	cmds := []string{
 		"ip route del default",
-		fmt.Sprintf("ip addr flush dev %s", nic),
-		fmt.Sprintf("ip addr add %s/%s dev %s", localIp, mask, nic),
+		fmt.Sprintf("ip addr flush dev %s", nicIn),
+		fmt.Sprintf("ip addr add %s/%s dev %s", localInIp, maskIn, nicIn),
+		fmt.Sprintf("ip link set %s up", nicIn),
+	}
+	if nicIn != nicOut && localInIp != localOutIp {
+		cmds = append(cmds,
+			fmt.Sprintf("ip addr flush dev %s", nicOut),
+			fmt.Sprintf("ip addr add %s/%s dev %s", localOutIp, maskOut, nicOut),
+			fmt.Sprintf("ip link set %s up", nicOut),
+		)
 	}
 	for _, cmd := range cmds {
 		e := run(strings.Split(cmd, " ")...)
 		chkFatal(e)
 	}
 	p("writing /etc/hosts file")
-	hostFile := fmt.Sprintf("127.0.0.1 localhost\n%s %s\n", localIp, localHostname)
+	hostFile := fmt.Sprintf("127.0.0.1 localhost\n%s %s\n", localInIp, localHostname)
 	e := os.WriteFile("/etc/hosts", []byte(hostFile), 0444)
 	chkFatal(e)
 }
@@ -571,7 +604,7 @@ func setLocalDns(dnsServer string) {
 	e := os.WriteFile("/etc/resolv.conf", []byte(resolvConf), 0444)
 	chkFatal(e)
 
-	p("enabling DNS relay from %s to server at %s", localIp, dnsServer)
+	p("enabling DNS relay from %s to server at %s", localInIp, dnsServer)
 	cmds := []string{
 		fmt.Sprintf("iptables -t nat -A PREROUTING -p udp --dport 53 -j DNAT --to-destination %s:53", dnsServer),
 		fmt.Sprintf("iptables -t nat -A PREROUTING -p tcp --dport 53 -j DNAT --to-destination %s:53", dnsServer),
@@ -583,7 +616,7 @@ func setLocalDns(dnsServer string) {
 }
 
 func enableNat() {
-	cmd := fmt.Sprintf("iptables -t nat -A POSTROUTING -o mullvad+ -s %s -j MASQUERADE", networkId)
+	cmd := fmt.Sprintf("iptables -t nat -A POSTROUTING -o mullvad+ -s %s -j MASQUERADE", networkIdIn)
 	e := run(strings.Split(cmd, " ")...)
 	chkFatal(e)
 	for _, forward := range forwards {
@@ -617,6 +650,8 @@ func main() {
 	p("writing wireguard conf files")
 	readWgConfs()
 	getHostname()
+
+	waitForOutNic()
 
 	p("setting ip information")
 	setStaticIp()
