@@ -414,6 +414,25 @@ func DnsQueryServer(host, dnsServer string) []string {
 	ChkFatal(e)
 	return ips
 }
+func DnsQueryServerA(host, dnsServer string) []string {
+	return DnsQueryServer(host, dnsServer)
+}
+
+func DnsQueryServerPtr(ip, dnsServer string) []string {
+	var hosts []string
+	r := &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			d := net.Dialer{
+				Timeout: 5 * time.Second,
+			}
+			return d.DialContext(ctx, "udp", dnsServer+":53")
+		},
+	}
+	hosts, e := r.LookupAddr(context.Background(), ip)
+	ChkFatal(e)
+	return hosts
+}
 
 func DnsQuery(host string) []string {
 	var ips []string
