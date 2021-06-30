@@ -432,7 +432,7 @@ func DnsQueryServerPtr(ip, dnsServer string) []string {
 		},
 	}
 	hosts, e := r.LookupAddr(context.Background(), ip)
-	if e != nil && !strings.Contains(e.Error(), "target is invalid") {
+	if e != nil && !strings.Contains(e.Error(), "no such host") {
 		ChkFatal(e)
 	}
 	return hosts
