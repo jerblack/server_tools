@@ -1,0 +1,12 @@
+cleanup
+address orphan records after power outage
+
+on host.regA
+    query dns for A record
+    if response, for all ips returned
+        unregister A record
+
+on host.regPtr
+    query dns for PTR record
+    if response, for all hosts returned
+        unregister PTR record
