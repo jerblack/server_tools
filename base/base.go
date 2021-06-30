@@ -411,7 +411,9 @@ func DnsQueryServer(host, dnsServer string) []string {
 		},
 	}
 	ips, e := r.LookupHost(context.Background(), host)
-	ChkFatal(e)
+	if e != nil && !strings.Contains(e.Error(), "no such host") {
+		ChkFatal(e)
+	}
 	return ips
 }
 func DnsQueryServerA(host, dnsServer string) []string {
@@ -430,7 +432,9 @@ func DnsQueryServerPtr(ip, dnsServer string) []string {
 		},
 	}
 	hosts, e := r.LookupAddr(context.Background(), ip)
-	ChkFatal(e)
+	if e != nil && !strings.Contains(e.Error(), "target is invalid") {
+		ChkFatal(e)
+	}
 	return hosts
 }
 

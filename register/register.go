@@ -422,12 +422,45 @@ func (h *Host) unregCname() {
 	args := fmt.Sprintf("update del %s CNAME %s", h.Host, h.Alias)
 	runNsUpdate(args)
 }
+
+func (h *Host) cleanupA() {
+	p("cleanup: querying DNS for existing A records for host: %s", h.Host)
+	ips := dnsQueryA(h.Host, dnsServer)
+	if len(ips) > 0 {
+		p("cleanup: found %d existing A records for host %s", len(ips), h.Host)
+		for _, ip := range ips {
+			p("cleanup: unregistering A record: %s -> %s", h.Host, ip)
+			args := fmt.Sprintf("update del %s A %s", h.Host, ip)
+			runNsUpdate(args)
+		}
+	} else {
+		p("cleanup: no existing A records found for host %s", h.Host)
+	}
+}
+
+func (h *Host) cleanupPtr() {
+	p("cleanup: querying DNS for existing PTR records for IP: %s", h.Ip)
+	hosts := dnsQueryPtr(h.Ip, dnsServer)
+	if len(hosts) > 0 {
+		p("cleanup: found %d existing PTR records for IP %s", len(hosts), h.Ip)
+		for _, host := range hosts {
+			p("unregistering PTR record: %s -> %s", getPtr(h.Ip), host)
+			args := fmt.Sprintf("update del %s PTR %s", getPtr(h.Ip), host)
+			runNsUpdate(args)
+		}
+	} else {
+		p("cleanup: no existing PTR records found for host %s", h.Host)
+	}
+}
+
 func (h *Host) regA() {
+	h.cleanupA()
 	p("registering A record: %s -> %s", h.Host, h.Ip)
 	args := fmt.Sprintf("update add %s %d IN A %s", h.Host, ttl, h.Ip)
 	runNsUpdate(args)
 }
 func (h *Host) regPtr() {
+	h.cleanupPtr()
 	if !registerPtr {
 		return
 	}
@@ -514,12 +547,13 @@ func getPtr(ip string) string {
 }
 
 var (
-	p          = base.P
-	chk        = base.Chk
-	chkFatal   = base.ChkFatal
-	isAny      = base.IsAny
-	getLocalIp = base.GetLocalIp
-	dnsQuery   = base.DnsQueryServer
-	fileExists = base.FileExists
-	isIp       = base.IsIp
+	p           = base.P
+	chk         = base.Chk
+	chkFatal    = base.ChkFatal
+	isAny       = base.IsAny
+	getLocalIp  = base.GetLocalIp
+	dnsQueryA   = base.DnsQueryServerA
+	dnsQueryPtr = base.DnsQueryServerPtr
+	fileExists  = base.FileExists
+	isIp        = base.IsIp
 )
