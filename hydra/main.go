@@ -92,6 +92,7 @@ func (d *Deluge) start() {
 	})
 	d.stuckDl = make(map[string]int)
 	d.stuckSeeds = make(map[string]int)
+	d.stuckPaused = make(map[string]int)
 	d.cmd = make(chan DelugeCommand, 1)
 	d.response = make(chan DelugeResponse, 1)
 	//p("deluge daemon %s is marked as keep_finished: %t", d.name, d.keepDone)
@@ -363,21 +364,21 @@ func (d *Deluge) TorrentsStatus(state delugeclient.TorrentState) ([]DelugeTorren
 func (d *Deluge) getTorrents() []DelugeTorrent {
 	torrents, e := d.TorrentsStatus(delugeclient.StateUnspecified)
 	if e != nil && !strings.Contains(e.Error(), `field "ETA"`) {
-		chkFatal(e)
+		p("error getting torrents: %s", e.Error())
 	}
 	return torrents
 }
 func (d *Deluge) getPaused() []DelugeTorrent {
 	torrents, e := d.TorrentsStatus(delugeclient.StatePaused)
 	if e != nil && !strings.Contains(e.Error(), `field "ETA"`) {
-		chkFatal(e)
+		p("error getting torrents with state 'paused': %s", e.Error())
 	}
 	return torrents
 }
 func (d *Deluge) getFinished() []DelugeTorrent {
 	torrents, e := d.TorrentsStatus(delugeclient.StateSeeding)
 	if e != nil && !strings.Contains(e.Error(), `field "ETA"`) {
-		chkFatal(e)
+		p("error getting torrents with state 'seeding': %s", e.Error())
 	}
 	var fin []DelugeTorrent
 	for _, t := range torrents {
@@ -390,7 +391,7 @@ func (d *Deluge) getFinished() []DelugeTorrent {
 func (d *Deluge) getDownloading() []DelugeTorrent {
 	torrents, e := d.TorrentsStatus(delugeclient.StateDownloading)
 	if e != nil && !strings.Contains(e.Error(), `field "ETA"`) {
-		chkFatal(e)
+		p("error getting torrents with state 'downloading': %s", e.Error())
 	}
 	var dls []DelugeTorrent
 	for _, t := range torrents {
@@ -403,7 +404,7 @@ func (d *Deluge) getDownloading() []DelugeTorrent {
 func (d *Deluge) getErrors() []DelugeTorrent {
 	torrents, e := d.TorrentsStatus(delugeclient.StateError)
 	if e != nil && !strings.Contains(e.Error(), `field "ETA"`) {
-		chkFatal(e)
+		p("error getting torrents with state 'error': %s", e.Error())
 	}
 	var errs []DelugeTorrent
 	for _, t := range torrents {
@@ -416,7 +417,7 @@ func (d *Deluge) getErrors() []DelugeTorrent {
 func (d *Deluge) getChecking() []DelugeTorrent {
 	torrents, e := d.TorrentsStatus(delugeclient.StateChecking)
 	if e != nil && !strings.Contains(e.Error(), `field "ETA"`) {
-		chkFatal(e)
+		p("error getting torrents with state 'checking': %s", e.Error())
 	}
 	return torrents
 }
