@@ -189,7 +189,7 @@ func main() {
 		p("snapraid_mgr: snapraid is already running")
 		os.Exit(0)
 	}
-	stopSonarr()
+	//stopSonarr()
 	waitForSsdFlush()
 	e := runSsdFlush()
 	if e != nil {
@@ -211,7 +211,7 @@ func main() {
 		chk(e)
 		os.Exit(1)
 	}
-	startSonarr()
+	//startSonarr()
 
 }
 
