@@ -1,0 +1,170 @@
+TODO: KODI remote : web, play/pause/skip forward/stop/delete current
+TODO: KODI remote : auto move last played to .played subfolder on change
+
+kodictl
+
+-- web remote for kodi in my narrowly defined use case
+    remote control running kodi instance on fire tv
+        play/pause/next/dpad arrows/ok/back/shuffle toggle/menubutton
+
+    launch kodi using adb on fire tv
+        adb shell am start -a android.intent.action.VIEW -n org.xbmc.kodi/.Splash
+    kill kodi using adb
+        adb shell am force-stop org.xbmc.kodi
+    start playback of individual folders over smb
+        Player.Open
+        smb://192.168.0.5/z/_cat_video/Paul_Dinning
+        smb://192.168.0.5/z/_cat_video/Handsome_Nature
+    display current track
+    display,control track progress
+
+    automatically move played files into .played subfolder when done
+        detect track change and move last file
+    delete files
+        click delete -> skip to next track and delete file that was playing
+
+    https://kodi.wiki/view/JSON-RPC_API
+
+
+    curl --header 'Content-Type: application/json'
+         --request POST
+         --data ''{ "jsonrpc":"2.0",
+                    "method":"Player.Open",
+                    "params":{
+                        "item":{
+                            "directory":"smb://192.168.0.5/z/_cat_video/Paul_Dinning" } },
+                             "id":1 }''
+         http://192.168.0.226:8080/jsonrpc'
+
+
+-- Methods
+    https://kodi.wiki/view/JSON-RPC_API/v12
+    Player.GetActivePlayers
+    Player.GetItem
+    Player.PlayPause
+    Input.Back
+    Input.ContextMenu
+    Input.Left
+    Input.Right
+    Input.Down
+    Input.Up
+    Input.Select
+    Input.Home
+    Input.Action
+    {
+      "default": "analogfastforward",
+      "enums": [
+        "back",
+        "close",
+        "contextmenu",
+        "down",
+        "enter",
+        "info",
+        "left",
+        "menu",
+        "pause",
+        "play",
+        "playnext",
+        "playpause",
+        "right",
+        "rightclick",
+        "select",
+        "skipnext",
+        "skipprevious",
+        "stop",
+        "up"
+      ],
+      "id": "Input.Action",
+      "type": "string"
+    }
+
+
+    {"jsonrpc":"2.0", "method":"Player.Seek", "params": { "playerid":1, "time":{ "seconds":30}}}
+    {"jsonrpc":"2.0", "method":"Player.Seek", "params": { "playerid":1, "value":{ "minutes": 5, "seconds": 45 } }, "id":1}
+
+    {"jsonrpc":"2.0", "method":"Player.Seek", "params": { "playerid":1, "type":"time","value":{ "seconds": 30 } }, "id":1}
+    {"jsonrpc":"2.0", "method":"Player.Seek", "params": { "playerid":1, "value":{"time": { "minutes": 5, "seconds": 45 }} }, "id":1}
+    {"jsonrpc":"2.0", "method":"Player.Seek", "params": { "playerid":1, "value":{"percentage": 35.2} }, "id":1}
+
+
+--- web
+    title bar : video title <playing>
+    - menu bar - ^ <-> kodictl
+    collapsible from top
+    options
+        list of playlists by name, click to start them
+        cat videos routine
+        open kodi | close kodi
+        tv on | tv off
+    thumbnail
+        always displayed
+        refreshes every minute while playing
+    - top
+           up
+    left select right
+    back  down
+
+    - bottom
+    video title
+    date <-> id
+    progress/seek bar
+    skipback, next, playpause, delete
+
+--- thumbnail
+    thumbnail will be generated into and loaded from /x/.config/kodictl/thumb.png
+    client will load current thumb on page load
+    connected clients will be told by event stream to refresh the thumbnail
+        send new url with random int as param to prevent caching
+    only generate thumbnails when clients are connected
+    new thumbnail should be generated
+        when number of clients connected goes from 0 to 1, but not more since it's assumed that existing thumb is current
+        on play start
+        every 60 seconds after that
+        after video change
+    thumbnail should be generated with current timestamp
+
+--- ha endpoints
+    http://192.168.0.30:1880/endpoint/catvideos
+    http://192.168.0.30:1880/endpoint/openkodi
+    http://192.168.0.30:1880/endpoint/closekodi
+    http://192.168.0.30:1880/endpoint/tvoff
+    http://192.168.0.30:1880/endpoint/tvon
+
+
+
+--- get thumbnail
+    FILE='20180319-TV for Dogs - Birds Galore [C6iIamzKF7Q].mkv'
+    get duration
+    ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$FILE"
+    6045.222000
+
+    ffmpeg -hide_banner -loglevel warning -y -ss 4000 -i "$FILE" -s 480x270 -vframes 1 thumb.png
+
+-- forward wsl port
+netsh interface portproxy add v4tov4 listenport=2077 listenaddress=0.0.0.0 connectport=2077 connectaddress=172.20.38.194
+
+
+-- create self-signed cert
+openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes \
+  -keyout kodictl.key -out kodictl.crt -subj "/CN=kodictl" \
+  -addext "subjectAltName=DNS:kodictl,DNS:kodictl,DNS:kodictl.local,DNS:kodictl.home"
+cat kodictl.crt kodictl.key > kodictl.pem
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

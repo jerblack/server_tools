@@ -1,0 +1,23 @@
+{
+  "short_name": "kodictl",
+  "name": "kodictl",
+  "description": "Kodi Remote Control",
+  "icons": [
+    {
+      "src": "favicon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    },
+    {
+      "src": "favicon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#000000",
+  "display": "fullscreen",
+  "scope": "/",
+  "theme_color": "#000000"
+
+}
