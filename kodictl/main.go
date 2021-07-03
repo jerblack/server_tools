@@ -91,7 +91,6 @@ var (
 	chkFatal   = base.ChkFatal
 	isAny      = base.IsAny
 	fileExists = base.FileExists
-	getLocalIp = base.GetLocalIp
 )
 
 func hasString(arr []string, str string) bool {
