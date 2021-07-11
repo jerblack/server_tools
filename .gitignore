@@ -16,9 +16,11 @@ mux/subtitle_notes
 m/m
 /snapraid_mgr/snapraid_mgr
 /yt/yt
-/kodictl/
+/kodictl/kodictl
 next_steps
 portcheck/portcheck
 /backlog
 register/register
+sonarr_upgrader/sonarr_upgrader
+
 

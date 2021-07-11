@@ -31,3 +31,30 @@ TODO: HYDRA: add conf option to auto-delete torrents after x days unfinished & m
 TODO: YT: fail on download after timeout (1 hour)
 
 ---------------------
+
+TODO: hydra errors out if trying to add torrent that is already in client
+
+TODO : hydra is removing in progress torrents that are not stale
+Jun 28 23:11:49 server hydra[6502]: 11.11p | timeAdded 2021-06-28 19:25:04 -0700 PDT
+Jun 28 23:11:49 server hydra[6502]: 11.11p | blacklisted torrent found in public. Removing The.Simpsons.S29E20.1080p.WEB.x264-TBS[TGx]
+Jun 28 23:11:49 server hydra[6502]: 11.11p | pausing public torrent The.Simpsons.S29E20.1080p.WEB.x264-TBS[TGx]
+Jun 28 23:11:49 server hydra[6502]: 11.11p | removing public torrent The.Simpsons.S29E20.1080p.WEB.x264-TBS[TGx]
+Jun 28 23:11:49 server hydra[6502]: 11.11p | blacklist torrent in sonarr: The.Simpsons.S29E20.1080p.WEB.x264-TBS[TGx]
+Jun 28 23:11:49 server hydra[6502]: 11.11p | staleAge 672h0m0s
+Jun 28 23:11:49 server hydra[6502]: 11.11p | timeAdded 2021-06-28 18:14:40 -0700 PDT
+Jun 28 23:11:49 server hydra[6502]: 11.11p | blacklisted torrent found in public. Removing Robot.Chicken.S07E01.G.I.Jogurt.1080p.WEB-DL.DD5.1.H.264-YFN
+Jun 28 23:11:49 server hydra[6502]: 11.11p | pausing public torrent Robot.Chicken.S07E01.G.I.Jogurt.1080p.WEB-DL.DD5.1.H.264-YFN
+Jun 28 23:11:49 server hydra[6502]: 11.11p | removing public torrent Robot.Chicken.S07E01.G.I.Jogurt.1080p.WEB-DL.DD5.1.H.264-YFN
+Jun 28 23:11:49 server hydra[6502]: 11.11p | blacklist torrent in sonarr: Robot.Chicken.S07E01.G.I.Jogurt.1080p.WEB-DL.DD5.1.H.264-YFN
+Jun 28 23:11:49 server hydra[6502]: 11.11p | staleAge 672h0m0s
+Jun 28 23:11:49 server hydra[6502]: 11.11p | timeAdded 2021-06-28 18:44:32 -0700 PDT
+Jun 28 23:11:49 server hydra[6502]: 11.11p | blacklisted torrent found in public. Removing The.Simpsons.S09.1080p.DSNP.WEBRip.DDP5.1.x264-BATV[rartv]
+Jun 28 23:11:49 server hydra[6502]: 11.11p | pausing public torrent The.Simpsons.S09.1080p.DSNP.WEBRip.DDP5.1.x264-BATV[rartv]
+Jun 28 23:11:49 server hydra[6502]: 11.11p | removing public torrent The.Simpsons.S09.1080p.DSNP.WEBRip.DDP5.1.x264-BATV[rartv]
+Jun 28 23:11:49 server hydra[6502]: 11.11p | blacklist torrent in sonarr: The.Simpsons.S09.1080p.DSNP.WEBRip.DDP5.1.x264-BATV[rartv]
+Jun 28 23:11:49 server hydra[6502]: 11.11p | staleAge 672h0m0s
+Jun 28 23:11:49 server hydra[6502]: 11.11p | timeAdded 2021-06-28 03:25:04 -0700 PDT
+Jun 28 23:11:49 server hydra[6502]: 11.11p | blacklisted torrent found in public. Removing The.100.S01.1080p.BluRay.x264-ROVERS[rartv]
+Jun 28 23:11:49 server hydra[6502]: 11.11p | pausing public torrent The.100.S01.1080p.BluRay.x264-ROVERS[rartv]
+Jun 28 23:11:49 server hydra[6502]: 11.11p | removing public torrent The.100.S01.1080p.BluRay.x264-ROVERS[rartv]
+Jun 28 23:11:49 server hydra[6502]: 11.11p | blacklist torrent in sonarr: The.100.S01.1080p.BluRay.x264-ROVERS[rartv]
