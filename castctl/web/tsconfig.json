@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "sourceMap": true,
+    "strict": true,
+    "removeComments": true,
+    "preserveConstEnums": true,
+    "outFile": "web.js"
+  }
+}
