@@ -108,65 +108,6 @@ func (c *Cast) mute(m bool) {
 	e := c.app.SetMuted(m)
 	chk(e)
 }
-func (c *Cast) playPlaylist0(pl *Playlist) {
-	if pl != nil {
-		p("playing playlist: %s", pl.Name)
-		files, e := os.ReadDir(pl.Folder)
-		if e != nil {
-			chk(e)
-			return
-		}
-		reMp4 := regexp.MustCompile(`(?i).*\.mp4$`)
-		var media []string
-		for _, file := range files {
-			if !file.IsDir() && reMp4.MatchString(file.Name()) {
-				media = append(media, file.Name())
-			}
-		}
-		c.np.Playlist = pl.Name
-		go func() {
-			c.np.stopPolling()
-			c.np.startPolling(c.app)
-		}()
-		defer c.np.stopPolling()
-
-		p("playing %d files in folder %s", len(media), pl.Folder)
-		playChan := make(chan string, 1)
-		sendNext := make(chan struct{}, 1)
-
-		go func() {
-			for i, file := range media {
-				p("[%d/%d] now playing -> %s", i+1, len(media), file)
-				playChan <- file
-				select {
-				case <-sendNext:
-				case <-c.nextChan:
-				}
-
-			}
-		}()
-
-		for {
-			select {
-			case file := <-playChan:
-				t := parseTitle(file)
-				c.np.Date = t.Date
-				c.np.Id = t.Id
-				c.np.Title = t.Title
-				c.np.filename = filepath.Join(pl.Folder, file)
-				go func() {
-					e := c.app.Load(c.np.filename,
-						"video/mp4", false, false, false)
-					chk(e)
-					sendNext <- struct{}{}
-				}()
-			case <-c.stopChan:
-				return
-			}
-		}
-
-	}
-}
 func (c *Cast) playPlaylist(pl *Playlist) {
 	if pl != nil {
 		c.stopped = false

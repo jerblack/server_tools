@@ -55,7 +55,14 @@ func (np *NowPlaying) empty() {
 }
 
 func (np *NowPlaying) getUpdate() {
+	defer func() {
+		r := recover()
+		if r != nil {
+			p("error occurred during app.update: %s", r)
+		}
+	}()
 	e := np.app.Update()
+
 	if e != nil {
 		np.empty()
 		return
