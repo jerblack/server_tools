@@ -22,5 +22,7 @@ portcheck/portcheck
 /backlog
 register/register
 sonarr_upgrader/sonarr_upgrader
+castctl/castctl
+
 
 
