@@ -200,7 +200,7 @@ func (web *Web) handleCmd(cmd string, args map[string]interface{}) (result strin
 				e = fmt.Errorf("no second parameter specified with seek type second")
 				return
 			}
-			cast.seekFromStart(int(sec.(float64)))
+			cast.seek(sec.(float64))
 		case "percent":
 			pct, ok := args["percent"]
 			if !ok {

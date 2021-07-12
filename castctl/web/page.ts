@@ -158,6 +158,7 @@ class NowPlaying extends PartsBin {
         TimeMachine._this.percent = np.percent
         TimeMachine._this.position = np.position
         TimeMachine._this.duration = np.duration
+        core.resizeWindow()
 
     }
     set title(title:string) {
@@ -167,7 +168,6 @@ class NowPlaying extends PartsBin {
                 title = "-stopped-"
             }
             this.#ui.title.textContent = title
-            core.resizeWindow()
         }
     }
     set date(date:string) {

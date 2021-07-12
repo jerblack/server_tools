@@ -95,12 +95,8 @@ func (c *Cast) seekPercent(pct float64) {
 	e := c.app.SeekToTime(float32(position))
 	chk(e)
 }
-func (c *Cast) seek(sec int) {
-	e := c.app.Seek(sec)
-	chk(e)
-}
-func (c *Cast) seekFromStart(sec int) {
-	e := c.app.SeekFromStart(sec)
+func (c *Cast) seek(sec float64) {
+	e := c.app.SeekToTime(float32(sec))
 	chk(e)
 }
 func (c *Cast) setVolume(v float64) {
