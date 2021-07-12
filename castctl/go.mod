@@ -7,7 +7,7 @@ require (
 	github.com/go-sql-driver/mysql v1.6.0
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/h2non/filetype v1.1.1 // indirect
-	github.com/jerblack/server_tools/base v0.0.0-00010101000000-000000000000
+	github.com/jerblack/server_tools/base v0.0.0-20210712073358-8317289e87d8
 	github.com/sirupsen/logrus v1.8.1 // indirect
 	github.com/vishen/go-chromecast v0.2.9
 )
