@@ -44,14 +44,15 @@ import (
 // REGISTER_CONFIG		-> path to config file including file name, blank for /etc/register.conf
 
 var (
-	dnsServer    string
-	domain       = "home"
-	ttl          = 3600
-	regEvents    = []string{"start", "restart", "unpause"}
-	unRegEvents  = []string{"kill", "die", "stop", "pause"}
-	cleanup      = true
-	registerPtr  = true
-	confFilePath = "/etc/register.conf"
+	dnsServer     string
+	domain        = "home"
+	ttl           = 3600
+	regEvents     = []string{"start", "restart", "unpause"}
+	unRegEvents   = []string{"kill", "die", "stop", "pause"}
+	regExclusions []string
+	cleanup       = true
+	registerPtr   = true
+	confFilePath  = "/etc/register.conf"
 
 	forwardServer string
 	forwards      map[string][]*Forward
@@ -194,6 +195,11 @@ func parseConfig() {
 				}
 				cleanup = reTrue.MatchString(v)
 			}
+		case "register-exclude":
+			if v != "" {
+				v = strings.ToLower(v)
+				regExclusions = append(regExclusions, v)
+			}
 		case "forward-server":
 			if v != "" {
 				forwardServer = fmt.Sprintf("http://%s/cmd", v)
@@ -270,9 +276,15 @@ func (d *Docker) checkExisting() {
 		for _, c := range containers {
 			h, ok := d.Hosts[c.ID]
 			if !ok {
-				p("preexisting container found. registering %s", c.Names[0])
-				h = d.inspect(c.ID)
-				h.register()
+				host := strings.TrimPrefix(c.Names[0], "/")
+				host = strings.ToLower(host)
+				if isAny(host, regExclusions...) {
+					p("preexisting container found but in exclusion list. skipping registration: %s", host)
+				} else {
+					p("preexisting container found. registering %s", host)
+					h = d.inspect(c.ID)
+					h.register()
+				}
 			}
 		}
 		time.Sleep(60 * time.Minute)
@@ -298,6 +310,13 @@ func (d *Docker) events() {
 		select {
 		case msg := <-msgs:
 			h, ok := d.Hosts[msg.ID]
+			host := strings.TrimSuffix(h.Host, "."+domain)
+			host = strings.ToLower(host)
+			p("event -> type %s | id %s | status %s", msg.Type, msg.ID, msg.Status)
+			if isAny(host, regExclusions...) {
+				p("ignoring event for excluded host: %s", host)
+				continue
+			}
 			if isAny(msg.Status, regEvents...) {
 				if !ok {
 					h = d.inspect(msg.ID)
@@ -309,7 +328,6 @@ func (d *Docker) events() {
 					delete(d.Hosts, msg.ID)
 				}
 			}
-			p("event -> type %s | id %s | status %s", msg.Type, msg.ID, msg.Status)
 		case e := <-errs:
 			p("error received: %s", e.Error())
 			return
