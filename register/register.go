@@ -276,9 +276,8 @@ func (d *Docker) checkExisting() {
 		for _, c := range containers {
 			h, ok := d.Hosts[c.ID]
 			if !ok {
-				host := strings.TrimPrefix(c.Names[0], "/")
-				host = strings.ToLower(host)
-				if isAny(host, regExclusions...) {
+				host := c.Names[0]
+				if isHostExcluded(host) {
 					p("preexisting container found but in exclusion list. skipping registration: %s", host)
 				} else {
 					p("preexisting container found. registering %s", host)
@@ -289,6 +288,13 @@ func (d *Docker) checkExisting() {
 		}
 		time.Sleep(60 * time.Minute)
 	}
+}
+
+func isHostExcluded(host string) bool {
+	host = strings.TrimPrefix(host, "/")
+	host = strings.TrimSuffix(host, "."+domain)
+	host = strings.ToLower(host)
+	return isAny(host, regExclusions...)
 }
 
 func (d *Docker) events() {
@@ -310,22 +316,24 @@ func (d *Docker) events() {
 		select {
 		case msg := <-msgs:
 			h, ok := d.Hosts[msg.ID]
-			host := strings.TrimSuffix(h.Host, "."+domain)
-			host = strings.ToLower(host)
 			p("event -> type %s | id %s | status %s", msg.Type, msg.ID, msg.Status)
-			if isAny(host, regExclusions...) {
-				p("ignoring event for excluded host: %s", host)
-				continue
-			}
 			if isAny(msg.Status, regEvents...) {
 				if !ok {
 					h = d.inspect(msg.ID)
-					h.register()
+					if isHostExcluded(h.Host) {
+						p("ignoring event for excluded host: %s", h.Host)
+					} else {
+						h.register()
+					}
 				}
 			} else {
 				if ok {
-					h.unregister()
-					delete(d.Hosts, msg.ID)
+					if isHostExcluded(h.Host) {
+						p("ignoring event for excluded host: %s", h.Host)
+					} else {
+						h.unregister()
+						delete(d.Hosts, msg.ID)
+					}
 				}
 			}
 		case e := <-errs:
