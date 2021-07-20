@@ -6,7 +6,6 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
-	"github.com/jerblack/server_tools/base"
 	"log"
 	"mime"
 	"net/http"
@@ -238,7 +237,3 @@ func haCmd(verb string) {
 	chk(e)
 	rsp.Body.Close()
 }
-
-var (
-	getLocalIp = base.GetLocalIp()
-)

@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
-	"github.com/vishen/go-chromecast/application"
-	"github.com/vishen/go-chromecast/dns"
+	"github.com/jerblack/server_tools/castctl/application"
+	"github.com/jerblack/server_tools/castctl/dns"
 	"net"
 	"os"
 	"path/filepath"
@@ -37,7 +37,6 @@ type Cast struct {
 func (c *Cast) getApp() {
 	opts := []application.ApplicationOption{
 		application.WithDebug(false),
-		application.WithCacheDisabled(true),
 	}
 	app := application.NewApplication(opts...)
 	e := app.Start(ccIp, ccPort)
@@ -148,8 +147,7 @@ func (c *Cast) playPlaylist(pl *Playlist) {
 			c.np.Id = t.Id
 			c.np.Title = t.Title
 			c.np.filename = filepath.Join(pl.Folder, file)
-			e := c.app.Load(c.np.filename,
-				"video/mp4", false, false, false)
+			e := c.app.Load(c.np.filename, "video/mp4", false)
 			chk(e)
 			if c.stopped {
 				return

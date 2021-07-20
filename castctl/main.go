@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/jerblack/server_tools/base"
+	base "github.com/jerblack/base"
 )
 
 const (
@@ -33,4 +33,5 @@ var (
 	chk        = base.Chk
 	chkFatal   = base.ChkFatal
 	fileExists = base.FileExists
+	getLocalIp = base.GetLocalIp
 )

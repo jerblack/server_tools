@@ -15,7 +15,7 @@ const (
 	pwFile   = "/run/secrets/db_pw"
 	userEnv  = "DB_USER"
 	pwEnv    = "DB_PW"
-	dbServer = "server"
+	dbServer = "db.home"
 	dbDb     = "db"
 	dbPort   = "3306"
 )

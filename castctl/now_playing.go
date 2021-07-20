@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/vishen/go-chromecast/application"
+	"github.com/jerblack/server_tools/castctl/application"
 	"os"
 	"regexp"
 	"time"
@@ -155,10 +155,15 @@ func parseTitle(title string) *Title {
 
 func deleteCurrent() {
 	target := cast.np.filename
-	cast.next()
-	if fileExists(target) {
-		time.Sleep(3 * time.Second)
-		e := os.Remove(target)
-		chk(e)
-	}
+	go func() {
+		p("deleting file -> %s", target)
+		cast.next()
+		if fileExists(target) {
+			time.Sleep(3 * time.Second)
+			e := os.Remove(target)
+			chk(e)
+			p("delete success -> %s", target)
+		}
+	}()
+
 }
