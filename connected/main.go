@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/jerblack/server_tools/base"
+	"github.com/jerblack/base"
 	"io"
 	"log"
 	"math/rand"
@@ -500,10 +500,13 @@ func updateDnsHostname() {
 		rsp, e := http.Get("https://ipv4.am.i.mullvad.net")
 		chk(e)
 		defer func() {
-			e = rsp.Body.Close()
-			chk(e)
+			if rsp != nil {
+				e = rsp.Body.Close()
+				chk(e)
+			}
 		}()
 		if e != nil {
+			connFailed <- true
 			return
 		}
 		b, e := io.ReadAll(rsp.Body)
@@ -526,7 +529,7 @@ func connect(conf WgConf) {
 	p("setting up NAT and port forwarding")
 	enableNat()
 	setLocalDns(conf.dns)
-	updateDnsHostname()
+	go updateDnsHostname()
 
 	p("checking connection every 60 seconds")
 	go func() {
