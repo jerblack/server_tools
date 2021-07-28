@@ -183,7 +183,7 @@ func (f *Forward) disable() {
 	}
 	for _, cmd := range cmds {
 		e := run(strings.Split(cmd, " ")...)
-		chkFatal(e)
+		chk(e)
 	}
 }
 func loadConfig() {
@@ -269,10 +269,13 @@ func loadConfig() {
 
 	if fileExists(forwardFile) {
 		b, e := os.ReadFile(forwardFile)
-		chkFatal(e)
-		for _, line := range strings.Split(string(b), "\n") {
-			f := Forward{}
-			f.parse(line)
+		if e != nil {
+			for _, line := range strings.Split(string(b), "\n") {
+				f := Forward{}
+				f.parse(line)
+			}
+		} else {
+			chk(e)
 		}
 	}
 }
@@ -498,7 +501,10 @@ func makeRoutes() {
 func updateDnsHostname() {
 	if publicHostname != "" {
 		rsp, e := http.Get("https://ipv4.am.i.mullvad.net")
-		chk(e)
+		if e != nil {
+			p("failed to register dns: %s", e.Error())
+			return
+		}
 		defer func() {
 			if rsp != nil {
 				e = rsp.Body.Close()
@@ -513,7 +519,10 @@ func updateDnsHostname() {
 		remoteIp = strings.TrimSpace(string(b))
 		p("VPN public IP address looks like: %s", remoteIp)
 		e = run(dnsTool, publicHostname, remoteIp)
-		chkFatal(e)
+		if e != nil {
+			p("failed to register dns: %s", e.Error())
+			return
+		}
 		if newIp != nil {
 			newIp <- remoteIp
 		}
@@ -525,7 +534,10 @@ func connect(conf WgConf) {
 	nextPoker = make(chan bool)
 	p("connecting to wireguard server %s at %s", conf.name, conf.endpoint)
 	e := run("wg-quick", "up", conf.name)
-	chk(e)
+	if e != nil {
+		p("failed to connect to vpn server: %s", e.Error())
+		return
+	}
 	p("setting up NAT and port forwarding")
 	enableNat()
 	setLocalDns(conf.dns)
