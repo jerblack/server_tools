@@ -2,7 +2,8 @@ package main
 
 import (
 	"fmt"
-	. "github.com/jerblack/server_tools/base"
+	. "github.com/jerblack/base"
+	. "github.com/jerblack/base/progress"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -107,7 +108,8 @@ func moveOldFiles() error {
 			p("%d/%d moving file: %s -> %s", i+1, numFile, ssd, dst)
 			err = mvFile(src, dst)
 			if err != nil {
-				return err
+				chk(err)
+				continue
 			}
 
 			//err = os.MkdirAll(filepath.Dir(dst), 0777)
