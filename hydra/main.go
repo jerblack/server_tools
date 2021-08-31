@@ -22,6 +22,11 @@ import (
 	"time"
 )
 
+const (
+	dlFolder   = "/dl"
+	doneFolder = "/done"
+)
+
 var (
 	conf     = "/x/.config/hydra/hydra.conf"
 	dbFile   = "/x/.config/hydra/hydra.db"
@@ -382,7 +387,7 @@ func (d *Deluge) getFinished() []DelugeTorrent {
 	}
 	var fin []DelugeTorrent
 	for _, t := range torrents {
-		if t.isSeed && t.isFinished && t.state == "Seeding" && t.progress == 100 && t.savePath == d.doneFolder {
+		if t.isSeed && t.isFinished && t.state == "Seeding" && t.progress == 100 && t.savePath == doneFolder {
 			fin = append(fin, t)
 		}
 	}
@@ -395,7 +400,7 @@ func (d *Deluge) getDownloading() []DelugeTorrent {
 	}
 	var dls []DelugeTorrent
 	for _, t := range torrents {
-		if !t.isSeed && !t.isFinished && t.state == "Downloading" && t.progress < 100 && t.savePath == d.downloadFolder {
+		if !t.isSeed && !t.isFinished && t.state == "Downloading" && t.progress < 100 && t.savePath == dlFolder {
 			dls = append(dls, t)
 		}
 	}
@@ -434,13 +439,13 @@ func (d *Deluge) checkStuckTorrents() {
 				chk(e)
 			}
 		}
-		if v.state == "Seeding" && v.progress == 100 && v.savePath == d.downloadFolder {
+		if v.state == "Seeding" && v.progress == 100 && v.savePath == dlFolder {
 			n := d.stuckSeeds[v.id]
 			n = n + 1
 			d.stuckSeeds[v.id] = n
 			if n >= 3 {
 				delete(d.stuckSeeds, v.id)
-				e := d.MoveStorage([]string{v.id}, d.doneFolder)
+				e := d.MoveStorage([]string{v.id}, doneFolder)
 				chk(e)
 			}
 		}
@@ -573,8 +578,10 @@ func (dt *DelugeTorrent) moveFiles() {
 		e := verifyFolder(preProcFolder)
 		chkFatal(e)
 		for _, f := range dt.files {
-			dst := strings.Replace(f, dt.deluge.doneFolder, preProcFolder, 1)
-			e := os.Rename(f, dst)
+			outerSrc := strings.Replace(f, doneFolder, dt.deluge.doneFolder, 1)
+			dst := strings.Replace(f, doneFolder, preProcFolder, 1)
+			//dst := strings.Replace(f, dt.deluge.doneFolder, preProcFolder, 1)
+			e := os.Rename(outerSrc, dst)
 			chk(e)
 		}
 	} else {
@@ -589,11 +596,13 @@ func (dt *DelugeTorrent) linkFiles() error {
 	p("linking %d files from %s torrent %s", len(dt.files), dt.deluge.name, dt.name)
 
 	for _, src := range dt.files {
-		dst := strings.Replace(src, dt.deluge.doneFolder, preProcFolder, 1)
+		outerSrc := strings.Replace(src, doneFolder, dt.deluge.doneFolder, 1)
+		dst := strings.Replace(src, doneFolder, preProcFolder, 1)
+		//dst := strings.Replace(src, dt.deluge.doneFolder, preProcFolder, 1)
 		e := verifyFolder(filepath.Dir(dst))
 		chkFatal(e)
 		if !fileExists(dst) {
-			e = os.Link(src, dst)
+			e = os.Link(outerSrc, dst)
 			if e != nil {
 				return e
 			}
