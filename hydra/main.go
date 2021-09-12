@@ -23,8 +23,8 @@ import (
 )
 
 const (
-	dlFolder   = "/dl"
-	doneFolder = "/done"
+	dlFolder   = "/deluge/dl"
+	doneFolder = "/deluge/done"
 )
 
 var (
