@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/jerblack/server_tools/base"
+	"github.com/jerblack/base"
 	"os"
 	"os/exec"
 	"path/filepath"
