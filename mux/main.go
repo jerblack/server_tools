@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/jerblack/server_tools/base"
+	"github.com/jerblack/base"
 	"golang.org/x/net/html/charset"
 	"golang.org/x/text/transform"
 	"math"
@@ -1262,9 +1262,9 @@ var (
 	run            = base.Run
 	rmEmptyFolders = base.RmEmptyFolders
 	printCmd       = base.PrintCmd
-	mvFile         = base.MvFile
 	fileExists     = base.FileExists
 	isAny          = base.IsAny
+	mvFile         = base.MvFile
 )
 
 type Warning struct {

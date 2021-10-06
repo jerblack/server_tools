@@ -3,9 +3,7 @@ module github.com/jerblack/server_tools/mux
 go 1.16
 
 require (
-	github.com/jerblack/server_tools/base v0.0.0-20210525005959-34bc0457173a
+	github.com/jerblack/base v0.0.0-20211006050340-165cc5ecafa5
 	golang.org/x/net v0.0.0-20210423184538-5f58ad60dda6
 	golang.org/x/text v0.3.6
 )
-
-replace github.com/jerblack/server_tools/base => ../base
