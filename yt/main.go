@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	. "github.com/jerblack/server_tools/base"
+	. "github.com/jerblack/base"
 	"io"
 	"os"
 	"os/exec"
