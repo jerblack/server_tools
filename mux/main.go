@@ -619,6 +619,9 @@ func (j *Job) getStreams(path string) (error, []*Stream) {
 	e = json.Unmarshal(output, &ffStreams)
 	var streams []*Stream
 	for n, _ := range ffStreams.Streams {
+		if ffStreams.Streams[n].Tags.Language == "cmn" {
+			ffStreams.Streams[n].Tags.Language = "chi"
+		}
 		streams = append(streams, &ffStreams.Streams[n])
 	}
 	return nil, streams
