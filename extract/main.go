@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/jerblack/base"
 	"os"
 	"os/exec"
@@ -57,7 +58,8 @@ var (
 )
 
 func getFiles() {
-	count = 0
+	archiveCount := 0
+	junkCount := 0
 	rars = make(map[string][]string)
 	zips = make(map[string][]string)
 	encs = make(map[string][]string)
@@ -71,7 +73,7 @@ func getFiles() {
 		d := filepath.Dir(path)
 
 		if isRar(path) {
-			count++
+			archiveCount++
 			if isRarEncrypted(path) {
 				p("found encrypted rar: %s", path)
 				encs[d] = append(encs[d], path)
@@ -80,7 +82,7 @@ func getFiles() {
 				rars[d] = append(rars[d], path)
 			}
 		} else if isZip(path) {
-			count++
+			archiveCount++
 			if isZipEncrypted(path) {
 				p("found encrypted zip: %s", path)
 				encs[d] = append(encs[d], path)
@@ -94,30 +96,32 @@ func getFiles() {
 			if !info.IsDir() {
 				for _, ext := range junkExts {
 					if strings.HasSuffix(s, ext) {
-						count++
+						junkCount++
 						p("found %s file: %s", ext, path)
 						junkFiles[d] = append(junkFiles[d], path)
 					}
 				}
 				if isSample(path) {
-					count++
+					junkCount++
 					p("found sample video: %s", path)
 					junkFiles[d] = append(junkFiles[d], path)
 				}
+
 			} else {
 				last := filepath.Base(s)
 				for _, folder := range junkSubs {
 					if last == folder {
-						count++
+						junkCount++
 						p("found %s folder: %s", folder, path)
 						junkFolders[d] = append(junkFolders[d], path)
 					}
 				}
 				if isDirEmpty(path) {
-					count++
+					junkCount++
 					p("found empty folder: %s", path)
 					junkFolders[d] = append(junkFolders[d], path)
 				}
+
 			}
 		}
 
@@ -126,7 +130,7 @@ func getFiles() {
 	err := filepath.Walk(startPath, walk)
 	chkFatal(err)
 
-	if count > 0 {
+	if (archiveCount > 0 && deleteArchive) || (junkCount > 0 && deleteJunk) {
 		extract()
 	}
 }
@@ -256,7 +260,22 @@ func extract() {
 	getFiles()
 }
 func clean() {
-	for _, fileMaps := range []map[string][]string{rars, zips, encs, junkFiles} {
+	if deleteArchive {
+		for _, fileMaps := range []map[string][]string{rars, zips, encs} {
+			for _, fMap := range fileMaps {
+				for _, f := range fMap {
+					p("removing file: %s", f)
+					err := os.Remove(f)
+					chk(err)
+				}
+			}
+		}
+	}
+
+	if !deleteJunk {
+		return
+	}
+	for _, fileMaps := range []map[string][]string{junkFiles} {
 		for _, fMap := range fileMaps {
 			for _, f := range fMap {
 				p("removing file: %s", f)
@@ -371,14 +390,47 @@ func dstFolder(f string) string {
 	return filepath.Dir(f) + "/"
 }
 
+var deleteArchive = true
+var deleteJunk = true
+
+var help = `extract [-h][-a][-j][folder path]
+  extract all zip and rar files in current folder and all subfolders, delete archives on successful extraction, 
+  and delete junk files.
+  -h  print this message
+  -a  DO NOT delete archive files after extract.
+      These files are deleted by default.
+  -j  DO NOT delete junk files after extract.
+      These files are deleted by default.
+      files:
+        ".sfv", ".nfo", ".srr", ".url", ".diz", ".nzb", ".par2", ".ds_store", 
+        "thumbs.db", ".png", ".jpg", ".jpeg", ".txt", ".gif", "*sample*"
+      folders:
+        "sample", "screens", "proof"
+   extract runs recursively in the current folder by default unless a folder path is provided, 
+   in which case it runs recursively from there. 
+`
+
 func main() {
 	startPath, _ = os.Getwd()
-	if len(os.Args) > 1 {
-		f, e := os.Stat(os.Args[1])
-		if e == nil && f.IsDir() {
-			startPath = os.Args[1]
+	for _, arg := range os.Args {
+		lower := strings.ToLower(arg)
+		if lower == "-h" || lower == "-?" {
+			fmt.Println(help)
+			os.Exit(0)
+		} else if lower == "-a" {
+			fmt.Println("-a set: don't delete archives")
+			deleteArchive = false
+		} else if lower == "-j" {
+			fmt.Println("-j set: don't delete junk")
+			deleteJunk = false
+		} else {
+			f, e := os.Stat(arg)
+			if e == nil && f.IsDir() {
+				startPath = arg
+			}
 		}
 	}
+
 	p("extract called in: %s", startPath)
 
 	getFiles()
