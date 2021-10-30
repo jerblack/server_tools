@@ -619,6 +619,8 @@ func (j *Job) getStreams(path string) (error, []*Stream) {
 	e = json.Unmarshal(output, &ffStreams)
 	var streams []*Stream
 	for n, _ := range ffStreams.Streams {
+		// "Error: 'cmn' is neither a valid ISO 639-2 nor a valid ISO 639-1 code. See 'mkvmerge --list-languages'
+		// for a list of all languages and their respective ISO 639-2 codes."
 		if isAny(ffStreams.Streams[n].Tags.Language, "cmn", "yue") {
 			ffStreams.Streams[n].Tags.Language = "chi"
 		}
