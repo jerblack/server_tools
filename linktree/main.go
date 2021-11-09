@@ -25,7 +25,7 @@ iterate through each folder given in args
 */
 const (
 	srcBase = "/z/tor_done"
-	dstBase = "/z/links"
+	dstBase = "/z/_proc"
 )
 
 var (
