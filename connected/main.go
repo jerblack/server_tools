@@ -402,7 +402,10 @@ func connect(conf WgConf) {
 		p("connection marked as failed through /next endpoint, moving to next server")
 	case <-signalChan:
 		p("exiting. doing cleanup.")
+		p("disabling NAT")
 		disableNat()
+		p("deleting routes to vpn server")
+		deleteRoutes()
 		e = run("wg-quick", "down", conf.name)
 		chk(e)
 		os.Exit(0)
@@ -410,8 +413,7 @@ func connect(conf WgConf) {
 	}
 	p("disabling NAT")
 	disableNat()
-	p("deleting routes to vpn server")
-	deleteRoutes()
+
 	e = run("wg-quick", "down", conf.name)
 	chk(e)
 }
