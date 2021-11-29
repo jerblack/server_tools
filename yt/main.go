@@ -131,7 +131,7 @@ func downloadVids() {
 			continue
 		}
 		e := run(ytDl, "--config-location", config, fmt.Sprintf("https://www.youtube.com/watch?v=%s", id))
-		ChkFatal(e)
+		Chk(e)
 	}
 	doneDl <- struct{}{}
 }
