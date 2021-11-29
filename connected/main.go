@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/jerblack/base"
 	"io"
@@ -59,9 +58,6 @@ var (
 	nicOut                        string
 	dnsTool                       = "/usr/bin/dnsup"
 	configFilename                = "connected.conf"
-	forwardPath                   = "/var/lib/connected/"
-	forwardFilename               = "forwards.conf"
-	forwardFile                   string
 
 	connFailed, nextPoker chan bool
 	newIp                 chan string
@@ -100,42 +96,6 @@ func (f *Forward) parse(s string) {
 		log.Fatalf("invalid port forward specification: %s", s)
 	}
 	f.add()
-}
-
-func (f *Forward) save() {
-	rule := fmt.Sprintf("%s %s %s %s %s", f.Host, f.Proto, f.ExtPort, f.IntPort, f.Ip)
-	lines := []string{rule}
-	if fileExists(forwardFile) {
-		b, e := os.ReadFile(forwardFile)
-		chkFatal(e)
-		for _, line := range strings.Split(string(b), "\n") {
-			if line != rule && line != "" {
-				lines = append(lines, line)
-			}
-		}
-	}
-	e := os.WriteFile(forwardFile, []byte(strings.Join(lines, "\n")), 0664)
-	chkFatal(e)
-}
-func (f *Forward) unsave() {
-	rule := fmt.Sprintf("%s %s %s %s %s", f.Host, f.Proto, f.ExtPort, f.IntPort, f.Ip)
-	var lines []string
-	if fileExists(forwardFile) {
-		b, e := os.ReadFile(forwardFile)
-		chkFatal(e)
-		for _, line := range strings.Split(string(b), "\n") {
-			if line != rule && line != "" {
-				lines = append(lines, line)
-			}
-		}
-	}
-	if len(lines) > 0 {
-		e := os.WriteFile(forwardFile, []byte(strings.Join(lines, "\n")), 0664)
-		chkFatal(e)
-	} else if len(lines) == 0 {
-		e := os.Remove(forwardFile)
-		chkFatal(e)
-	}
 }
 
 func (f *Forward) String() string {
@@ -201,7 +161,6 @@ func loadConfig() {
 			p("no conf file found at %s", conf)
 			os.Exit(1)
 		}
-		forwardFile = filepath.Join(confFolder, forwardFilename)
 
 	} else {
 		for _, conf := range possibleConfs {
@@ -215,9 +174,6 @@ func loadConfig() {
 			p("no connected.conf file found in locations: %v", possibleConfs)
 			os.Exit(1)
 		}
-		e := os.MkdirAll(forwardPath, 0664)
-		chkFatal(e)
-		forwardFile = filepath.Join(forwardPath, forwardFilename)
 	}
 	connectedConf = strings.TrimSpace(connectedConf)
 
@@ -264,19 +220,8 @@ func loadConfig() {
 		}
 	}
 	if nicOut == "" {
-		nicOut = nicIn
-	}
-
-	if fileExists(forwardFile) {
-		b, e := os.ReadFile(forwardFile)
-		if e != nil {
-			for _, line := range strings.Split(string(b), "\n") {
-				f := Forward{}
-				f.parse(line)
-			}
-		} else {
-			chk(e)
-		}
+		p("no nic_out specified in config file")
+		os.Exit(1)
 	}
 }
 
@@ -323,117 +268,6 @@ func isIp(host string) bool {
 	return re.MatchString(host)
 }
 
-func startWeb() {
-	var w Web
-	w.start()
-}
-
-type Web struct{}
-
-func (web *Web) start() {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/cmd", web.cmd)
-	log.Fatal(http.ListenAndServe(net.JoinHostPort(localInIp, httpPort), mux))
-}
-
-func (web *Web) cmd(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	w.Header().Set("Content-Type", "application/json")
-	var c Cmd
-	e := json.NewDecoder(r.Body).Decode(&c)
-	chk(e)
-	e = r.Body.Close()
-	chk(e)
-	rsp := map[string]string{
-		"status": "ok",
-	}
-	switch c.Action {
-	case "ip":
-		rsp["ip"] = remoteIp
-		w.WriteHeader(http.StatusOK)
-		e := json.NewEncoder(w).Encode(rsp)
-		chk(e)
-	case "next":
-		for nextPoker == nil {
-			time.Sleep(1 * time.Second)
-		}
-		newIp = make(chan string)
-		ip := <-newIp
-		rsp["ip"] = ip
-		e := json.NewEncoder(w).Encode(rsp)
-		chk(e)
-	case "disable":
-		var forward *Forward
-		for _, f := range forwards[c.Host] {
-			if f.Proto == c.Proto && f.ExtPort == c.ExtPort {
-				forward = f
-			}
-		}
-		if forward != nil {
-			forward.disable()
-			forward.remove()
-			w.WriteHeader(http.StatusOK)
-			e := json.NewEncoder(w).Encode(rsp)
-			chk(e)
-			forward.unsave()
-		} else {
-			w.WriteHeader(http.StatusNotFound)
-			rsp["status"] = "no match found"
-			e := json.NewEncoder(w).Encode(rsp)
-			chk(e)
-		}
-	case "enable":
-		if isAny("", c.Host, c.Ip, c.ExtPort, c.IntPort, c.Ip) {
-			w.WriteHeader(http.StatusBadRequest)
-			rsp["status"] = "missing required field"
-			e := json.NewEncoder(w).Encode(rsp)
-			chk(e)
-		} else if c.Host == configForward {
-			w.WriteHeader(http.StatusBadRequest)
-			rsp["status"] = "invalid host"
-			e := json.NewEncoder(w).Encode(rsp)
-			chk(e)
-		} else {
-			f := Forward{
-				Host:    c.Host,
-				Proto:   c.Proto,
-				ExtPort: c.ExtPort,
-				IntPort: c.IntPort,
-				Ip:      c.Ip,
-			}
-			f.add()
-			f.enable()
-			w.WriteHeader(http.StatusOK)
-			e := json.NewEncoder(w).Encode(rsp)
-			chk(e)
-			f.save()
-		}
-	case "cleanup":
-		var cleanup []*Forward
-		for host, forward := range forwards {
-			if host != configForward {
-				for _, f := range forward {
-					cleanup = append(cleanup, f)
-				}
-			}
-		}
-		for _, f := range cleanup {
-			f.disable()
-			f.remove()
-			f.unsave()
-		}
-		w.WriteHeader(http.StatusOK)
-		e := json.NewEncoder(w).Encode(rsp)
-		chk(e)
-	}
-}
-
-type Cmd struct {
-	Action string `json:"action"`
-	Forward
-}
-
 type WgConf struct {
 	filename string
 	name     string
@@ -474,17 +308,6 @@ func readWgConfs() {
 			confs = append(confs, c)
 
 		}
-	}
-}
-
-func waitForOutNic() {
-	for {
-		_, e := net.InterfaceByName(nicOut)
-		if e == nil {
-			return
-		}
-		p("waiting for %s to appear in container", nicOut)
-		time.Sleep(3 * time.Second)
 	}
 }
 
@@ -590,29 +413,7 @@ func getHostname() {
 	chkFatal(e)
 	localHostname = strings.ReplaceAll(string(txt), "\n", "")
 }
-func setStaticIp() {
-	cmds := []string{
-		"ip route del default",
-		fmt.Sprintf("ip addr flush dev %s", nicIn),
-		fmt.Sprintf("ip addr add %s/%s dev %s", localInIp, maskIn, nicIn),
-		fmt.Sprintf("ip link set %s up", nicIn),
-	}
-	if nicIn != nicOut && localInIp != localOutIp {
-		cmds = append(cmds,
-			fmt.Sprintf("ip addr flush dev %s", nicOut),
-			fmt.Sprintf("ip addr add %s/%s dev %s", localOutIp, maskOut, nicOut),
-			fmt.Sprintf("ip link set %s up", nicOut),
-		)
-	}
-	for _, cmd := range cmds {
-		e := run(strings.Split(cmd, " ")...)
-		chkFatal(e)
-	}
-	p("writing /etc/hosts file")
-	hostFile := fmt.Sprintf("127.0.0.1 localhost\n%s %s\n", localInIp, localHostname)
-	e := os.WriteFile("/etc/hosts", []byte(hostFile), 0444)
-	chkFatal(e)
-}
+
 func setLocalDns(dnsServer string) {
 	p("writing /etc/resolv.conf file")
 	resolvConf := fmt.Sprintf("nameserver %s", dnsServer)
@@ -666,11 +467,6 @@ func main() {
 	readWgConfs()
 	getHostname()
 
-	waitForOutNic()
-
-	p("setting ip information")
-	setStaticIp()
-
 	p("found %d conf files", len(confs))
 	for _, c := range confs {
 		fmt.Printf("%+v\n", c)
@@ -678,7 +474,6 @@ func main() {
 	p("adding routes")
 	makeRoutes()
 
-	go startWeb()
 	p("making first connection")
 	for {
 		for _, conf := range confs {
@@ -688,10 +483,8 @@ func main() {
 }
 
 var (
-	p          = base.P
-	chk        = base.Chk
-	chkFatal   = base.ChkFatal
-	run        = base.Run
-	isAny      = base.IsAny
-	fileExists = base.FileExists
+	p        = base.P
+	chk      = base.Chk
+	chkFatal = base.ChkFatal
+	run      = base.Run
 )
