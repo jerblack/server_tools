@@ -321,6 +321,17 @@ func makeRoutes() {
 		add(conf.endpoint)
 	}
 }
+func deleteRoutes() {
+	rm := func(addr string) {
+		cmd := []string{"ip", "route", "del", addr, "via", gateway, "dev", nicOut}
+		e := run(cmd...)
+		chkFatal(e)
+	}
+	for _, conf := range confs {
+		rm(conf.endpoint)
+	}
+}
+
 func updateDnsHostname() {
 	if publicHostname != "" {
 		rsp, e := http.Get("https://ipv4.am.i.mullvad.net")
@@ -391,12 +402,6 @@ func connect(conf WgConf) {
 		p("connection marked as failed through /next endpoint, moving to next server")
 	case <-signalChan:
 		p("exiting. doing cleanup.")
-		for _, forward := range forwards {
-			for _, f := range forward {
-				f.disable()
-			}
-		}
-		p("disabling NAT")
 		disableNat()
 		e = run("wg-quick", "down", conf.name)
 		chk(e)
@@ -405,6 +410,8 @@ func connect(conf WgConf) {
 	}
 	p("disabling NAT")
 	disableNat()
+	p("deleting routes to vpn server")
+	deleteRoutes()
 	e = run("wg-quick", "down", conf.name)
 	chk(e)
 }
