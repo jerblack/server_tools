@@ -130,9 +130,7 @@ func downloadVids() {
 			p("video already downloaded. skipping %s", id)
 			continue
 		}
-		e := runWithTimeout(ytDl,
-			[]string{"--config-location", config, fmt.Sprintf("https://www.youtube.com/watch?v=%s", id)},
-			ytTimeout)
+		e := run(ytDl, "--config-location", config, fmt.Sprintf("https://www.youtube.com/watch?v=%s", id))
 		ChkFatal(e)
 	}
 	doneDl <- struct{}{}
