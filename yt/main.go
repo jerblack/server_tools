@@ -14,22 +14,82 @@ import (
 )
 
 var (
-	downloadArchive = "/x/.config/yt/downloads.yt"
+	downloadArchive = "/w/.config/yt/downloads.yt"
 	rclonePath      = "google:go/src/server_tools/yt/"
-	rcloneConfig    = "/x/.config/yt/rclone.conf"
-	rclone          = "rclone"
-	config          = "/x/.config/yt/ytdl.conf"
+	rcloneConfig    = "/w/.config/yt/rclone.conf"
+	rclone          = "/usr/bin/rclone"
+	config          = "/w/.config/yt/ytdl.conf"
 	playlists       = map[string]string{
 		"Paul Dinning":    "https://www.youtube.com/playlist?list=UUPJXfmxMYAoH02CFudZxmgg",
 		"Handsome Nature": "https://www.youtube.com/playlist?list=UUJLIwYrmwgwbTzgmB5yVc7Q",
 	}
-	ytDl            = "youtube-dl"
+	ytDl            = "/usr/bin/youtube-dl"
 	numRecentVideos = 40
-	timeout         = 1 * time.Hour
+	ytTimeout       = 1 * time.Hour
 	donePl, doneDl  chan struct{}
 	vidIds          chan string
 	archiveCache    []string
 )
+
+func run(bin string, args ...string) error {
+	done := make(chan error, 1)
+	cmd := exec.Command(bin, args...)
+	var stdBuffer bytes.Buffer
+	mw := io.MultiWriter(os.Stdout, &stdBuffer)
+	cmd.Stdout = mw
+	cmd.Stderr = mw
+	e := cmd.Start()
+	ChkFatal(e)
+	go func() {
+		done <- cmd.Wait()
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			p("%s finished with error = %v", bin, err)
+		} else {
+			p("%s finished successfully", bin)
+		}
+		return err
+	}
+}
+func runWithTimeout(bin string, args []string, timeout time.Duration) error {
+	done := make(chan error, 1)
+	cmd := exec.Command(bin, args...)
+	var stdBuffer bytes.Buffer
+	mw := io.MultiWriter(os.Stdout, &stdBuffer)
+	cmd.Stdout = mw
+	cmd.Stderr = mw
+	e := cmd.Start()
+	ChkFatal(e)
+	go func() {
+		done <- cmd.Wait()
+	}()
+	select {
+	case <-time.After(timeout):
+		e := cmd.Process.Kill()
+		ChkFatal(e)
+		return fmt.Errorf("%s timed out after %f seconds", bin, timeout.Seconds())
+	case err := <-done:
+		if err != nil {
+			p("%s finished with error = %v", bin, err)
+		} else {
+			p("%s finished successfully", bin)
+		}
+		return err
+	}
+}
+
+func updateTools() {
+	e := run("sudo", ytDl, "-U")
+	if e != nil {
+		os.Exit(1)
+	}
+	e = run("sudo", rclone, "selfupdate")
+	if e != nil {
+		os.Exit(1)
+	}
+}
 
 func getIdsFromPlaylist(pl string) {
 	// https://www.yellowduck.be/posts/reading-command-output-line-by-line/
@@ -70,31 +130,10 @@ func downloadVids() {
 			p("video already downloaded. skipping %s", id)
 			continue
 		}
-		done := make(chan error, 1)
-
-		cmd := exec.Command(ytDl, "--config-location", config,
-			fmt.Sprintf("https://www.youtube.com/watch?v=%s", id))
-		var stdBuffer bytes.Buffer
-		mw := io.MultiWriter(os.Stdout, &stdBuffer)
-		cmd.Stdout = mw
-		cmd.Stderr = mw
-		e := cmd.Start()
+		e := runWithTimeout(ytDl,
+			[]string{"--config-location", config, fmt.Sprintf("https://www.youtube.com/watch?v=%s", id)},
+			ytTimeout)
 		ChkFatal(e)
-		go func() {
-			done <- cmd.Wait()
-		}()
-		select {
-		case <-time.After(timeout):
-			e := cmd.Process.Kill()
-			ChkFatal(e)
-			p("youtube-dl dl of %s timed out. skipping", id)
-		case err := <-done:
-			if err != nil {
-				p("youtube-dl dl of %s finished with error = %v", id, err)
-			} else {
-				p("youtube-dl dl of %s finished successfully", id)
-			}
-		}
 	}
 	doneDl <- struct{}{}
 }
@@ -115,6 +154,7 @@ func cacheDlArchive() {
 }
 
 func main() {
+	updateTools()
 	cacheDlArchive()
 	donePl = make(chan struct{}, 1)
 	doneDl = make(chan struct{}, 1)
@@ -140,5 +180,4 @@ func main() {
 var (
 	p   = P
 	chk = Chk
-	run = Run
 )
