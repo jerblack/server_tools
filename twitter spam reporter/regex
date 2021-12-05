@@ -1,0 +1,231 @@
+
+Am I  attractive?
+Am I  attractive?
+Am I attractive?
+^am\s+i\s+attractive\?$
+
+Ar  you bored,  let's talk?
+Ar you as bored aas I am in this quaraantine?
+Are  you  also lonely in this quarantine?
+Are  you as bored as I  am in this quarantine?
+Are you as bored as I am  in this quaarantine?
+Are  you bord? Chat?
+Are  you bored? Chat?
+Are you  bored, let's talk?
+Are you also lonely in  this quarantine?
+Are you as bored as I am in this quarantin?
+Are you bord in this quarantine too?
+Are you bored in  this quarantine too?
+Are you bord, let's taalk?
+^are*\s+you.*\s+(bore*d|lonely).+(ta+lk|chat|quara+ntine).*\?$
+
+Chaat?
+Chaat?
+Chat?
+^cha+t\?$
+
+Do  you  think I'm beautiful?
+Do  you think I'm bautiful?
+Do  you think  I'm  beautiful?
+Do you  think I'm beautiful?
+Do you think I'm beaautiful?
+Do  you like  me?
+Do  you like me?
+Do you lik my photos?
+Do you  feel lonely in this quarantine too?
+Do you feel  lonely in this quaarantine too?
+Do you fel lonely in this  quarantine  too?
+Do you miss    too?
+do you feel lonly in this quarantine too?
+Do you fl lonely in this quarantine  too?
+/^do\s+you\s+(think.+be*a*utiful|like?.+(me|photos)|fe*l\s+lone?ly.+qua+rantine.+|miss\s+too)\?$/i
+
+Guys,  let's  chat?
+Guys, let's  chat?
+Hello  sweeties, cchat?
+Hello  sweetis, cchat?
+Hello sweties, chat?
+Hllo sweties, chat?
+Hi  guys, cchat?
+Hi guys,  chaat?
+Hi guys, cchat?
+^(hi\s+guys,|guys,\s+let's|he?l+o\s+swe+tie?s,)\s+c+ha+t\?$
+
+
+Hello everyone, are  we getting acquainted?
+Hello everyone, are w getting acquainted?
+Hello everyone, are w gtting acquaintd?
+Hello everyone, are we getting acquainted?
+hello everyone, are we getting  acquaainted?
+hello everyone, are we getting accquaintd?
+Hello everyone, aare we getting aacquainted?
+
+^hello\s+everyone.+ge?tting\s+a+c+qua+inte?d\?$
+
+
+How  about  a chat?
+How  about a chat?
+How about  a  chat?
+How about a  chat?
+How about a chat?
+How about  a meting?
+How  aabout getting bored together?
+How about  getting  bord together?
+How about getting bord together?
+How about getting bored together?
+How about gtting bored togther?
+How about gtting bored togethr?
+^how\s+a+bout.+(chat|me+ting|ge?tting\s+bore?d\s+toge?the?r)\?$
+
+
+How ccan I  deal with loneliness?
+How ccan I deal with loneliness?
+How  caan I deal with loneliness?
+How do you deal  with lonliness?
+How do you deal with loneliness?
+How do  you deal with boredom in this quarantine?
+How do you deaal with boredom in this quaraantin?
+How do  you dal with loneliness?
+^how\s+(c+a+n\s+i|do\s+you)\s+de?a+l\s+with.+(lone?liness|boredom.+quara+ntine?)\?$
+
+How not to di  of bordom?
+How not to die  of boredom?
+How not to  die of boredom?
+^how\s+not\s+to\s+die?\s+of\s+bore?dom\?$
+
+
+I aam  so bord...
+I aam so bord...
+I aam so bored...
+I'm so  lonely  ...
+I'm so  sad, what should I do?
+I'm so sad, what  should I  do?
+I'm so sad, what  should I do?
+I'm so sad, what should I do?
+I'm so  saad, what should  I do?
+^i(\s+a+m|'m)\s+so\s+((bore?d|lonely)\s*\.{3}|sa+d,\s+what\s+should\s+i\s+do\?)$
+
+Who will  help me with  advicce?
+Who will  help me with  advice?
+Who will help me with aadvice?
+i need a pice of advice guys
+i need a piecce of advicce guys
+Who will help  m with aadvice?
+^(who\s+will\s+help\s+me?\s+with|i\s+need\s+a\s+pie?c+e\s+of)\s+a+dvic+e(\s+guys|\?)$
+
+
+I rally want to talk to  someone  ...
+I really want  to taalk to someone ...
+I really want to  talk to someon ...
+^i\s+re?ally\s+want\s+to\s+ta+lk\s+to\s+someone?\s+\.{3}$
+
+I would lik  to  communicate ...
+I would like to ccommunicate ...
+^i\s+would\s+like?\s+to\s+c+ommunicate\s\.{3}$
+
+
+I'm wondering what you think  of my photos?
+^i'm\s+wondering\s+what\s+you\s+think\s+of\s+my\s+photos\?$
+
+It  is important for me to know if my photos are beautiful, what do you think?
+my\s+photos\s+.+beautiful.+what\s+do\s+you\s+think\?$
+
+
+It's  so boring in  this quaraantine
+It's so boring  in this quarantine
+It's so boring in this quarantine
+It's  so boring in this quaarantine
+^it's\s+so\s+boring\s+in\s+this\s+qua+ra+ntine$
+
+
+Let's  get  acquaintd?
+Let's get acquaaintd?
+Let's get acquaainted?
+^let's\s+get\s+acqua+inte?d\?$
+
+Lt's talk?
+^le?t's\s+talk\?$
+
+Lonely  too?
+Lonely too?
+Boring  too?
+Boring  too?
+^(lonely|boring)\s+too\?$
+
+Looking  for new  frinds
+Looking  for new friends
+Looking for new  frinds
+^looking\s+for\s+new\s+frie?nds$
+
+Meeen,  hey)
+Men are you here?
+Mn aare you here?
+Men are you her?
+Men are  you her?
+Men are you hr?
+^me*n(,\s+hey\)|\s+a+re?\s+you\s+he?re?\?)$
+
+
+So  lonely today
+^so\s+lonely\s+today$
+
+So  boring and lonely ...
+So boring  aand  lonely ...
+So boring  aand lonely ...
+So boring  and  lonely  ...
+So boring  and lonly ...
+So boring and lonly ...
+so\s+boring\s+a+nd\s+lone?ly\s+\.{3}
+
+Someon waants to talk to me?
+Someone waants to talk to me?
+Someone wants to taalk to me?
+Somone wants to talk to me?
+
+Someone  wants to talk to m?
+^som?e?one?\s+wa+nts\s+to\s+ta+lk\s+to\sme?\?$
+
+What do you do when you ar sad?
+What do you do when you are  sad?
+What do you do whn you are sad?
+What to do  when sad  and lonely?
+What to do when sad and lonely?
+Whaat to do when  sad and lonely?
+^wha+t\s+(do\s+you|to)\s+do\s+whe?n.+sa+d.*\?$
+
+
+Who is lonely like me?
+Who is lonly like  me?
+Who  is lonely like m?
+^Who\s+is\s+lone?ly\s+like\s+me?\?$
+
+Who waants to cchat?
+^who\s+wa+nts\s+to\s+c+hat\?$
+
+
+Who will ccheer m up?
+^who\s+will\s+c+heer\s+me?\s+up\?$
+
+Who  is  bored too ...
+Who is  bored too ...
+Who's  bord here too?
+Who's bored  here  too?
+Who's bored here  too?
+Who's bored here too?
+Who's bored her too?
+Who's bored her too?
+^who(\s+is|'s)\s+bore?d\s+(here?\s+)*too(\s\.{3}|\?)$
+
+Will you be  company?
+Will you be company?
+Will you  b company?
+^will\s+you\s+be?\s+company\?$
+
+
+gemini-link .net
+TAKELN.NET
+TAKELN.  NET
+TAKE10X . C O M
+FASTMAKE.  NET
+MCRYP. NE T
+(gemini-link|takeln|take10x|fastmake|mcryp)\s*\.\s*(n\s*e\s*t|c\s*o\s*m)

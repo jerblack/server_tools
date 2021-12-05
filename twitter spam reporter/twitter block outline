@@ -1,0 +1,53 @@
+on reportAll start
+    add each monitored user name to userGather queue
+    change page to first user page
+
+on page load
+    check for users in userGather queue
+        if current page is a user page for one of the users in queue
+            https://twitter.com/<user>/with_replies
+        run tweetGather on user page
+        remove user from userGather queue
+        get next user and switch to their user page
+
+    check for tweets in tweetQueue queue
+        if current page is NOT in the tweetQueue queue
+            get tweet from tweetQueue queue and switch to tweet page
+        if current page is in the tweetQueue queue
+            https://twitter.com/<user>>/status/<tweet id>>
+            run report on page
+            remove tweet page from tweetQueue queue
+            get next tweet from tweetQueue queue amd switch to page
+
+report page
+    load all keywords into memory from db
+        all keywords are lowercase
+    for each tweet on page,
+        if tweet contains keyword or tweet from reported user
+            report tweet
+            add tweet id and user to reportedTweets
+                if id already in reportedTweets, get and increment current count
+                if not, add id and user with count 1
+            hide tweet
+            increment count on keyword occurrences
+        else hide tweet
+
+db tables
+    keywords
+        term string primary, count number
+    userGather
+        user string
+    tweetQueue
+        tweetId string primary, user string
+    reportedTweets
+        tweetId string primary, user string, count number
+    reportedUsers
+        user string primary, count number
+
+
+-------------------------
+
+tweetGather
+
+
+
