@@ -7,6 +7,11 @@ github.com/go-gomail/gomail v0.0.0-20160411212932-81ebce5c23df h1:Bao6dhmbTA1KFV
 github.com/go-gomail/gomail v0.0.0-20160411212932-81ebce5c23df/go.mod h1:GJr+FCSXshIwgHBtLglIg9M2l2kQSi6QjVAngtzI08Y=
 github.com/jerblack/go-libdeluge v0.5.5-0.20210422142137-f8aa57e57d6a h1:uSVt1OP6a3F+0E1NYWBj5iGu8eZ7qZnCbtwVVmF3TlQ=
 github.com/jerblack/go-libdeluge v0.5.5-0.20210422142137-f8aa57e57d6a/go.mod h1:9LDYtLWyrpIwA/0zRwupoKsYDG7zBGq2Ygy1p6EqNzE=
+github.com/jerblack/server_tools/base v0.0.0-20210603055124-7c7ca4553ee8/go.mod h1:CQ2KRFCODEPxTx5jtT/KTof763ed/J+q2vNPEzjYqC4=
+github.com/jerblack/server_tools/base v0.0.0-20211129124733-a8a8513a74f8 h1:d1g7gOUEuGgmVxilJiDHr/AkyZkDYtz520FPUXlG/rw=
+github.com/jerblack/server_tools/base v0.0.0-20211129124733-a8a8513a74f8/go.mod h1:vbZfpNOXBvDLgDk25sXHGym3TF6urElsDWJF92EyRA8=
+github.com/jerblack/server_tools/base.db v0.0.0-20211129124733-a8a8513a74f8 h1:tVTifh3QBbr/ga9kUYlfSAx6/8+Qj8dFv1GBLUxWxns=
+github.com/jerblack/server_tools/base.db v0.0.0-20211129124733-a8a8513a74f8/go.mod h1:HDfGc/m4NrohvT0WR+cY8ii1WwD3Z57g5trM9KexYJ8=
 github.com/k0kubun/go-ansi v0.0.0-20180517002512-3bf9e2903213/go.mod h1:vNUNkEQ1e29fT/6vq2aBdFsgNPmy8qMdSay1npru+Sw=
 github.com/mattn/go-isatty v0.0.12/go.mod h1:cbi8OIDigv2wuxKPP5vlRcQ1OAZbq2CE4Kysco4FUpU=
 github.com/mattn/go-runewidth v0.0.10 h1:CoZ3S2P7pvtP45xOtBw+/mDL2z0RKI576gSkzRRpdGg=

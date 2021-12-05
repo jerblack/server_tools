@@ -28,9 +28,9 @@ const (
 )
 
 var (
-	conf     = "/x/.config/hydra/hydra.conf"
-	dbFile   = "/x/.config/hydra/hydra.db"
-	keepFile = "/x/.config/hydra/hydra_keep"
+	conf     = "/w/config/hydra/hydra.conf"
+	dbFile   = "/w/config/hydra/hydra.db"
+	keepFile = "/w/config/hydra/hydra_keep"
 
 	procFolder, preProcFolder, convertFolder string
 	recycleFolder, torFolder, probFolder     string
