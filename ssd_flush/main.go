@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	. "github.com/jerblack/base"
-	. "github.com/jerblack/base/progress"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -40,10 +39,7 @@ import (
 
 var (
 	ssds = []string{
-		"/mnt/ssd01/cache",
-		"/mnt/ssd02/cache",
-		"/mnt/ssd03/cache",
-		"/mnt/ssd04/cache",
+		"/mnt/ssd00/cache",
 	}
 	array = "/mnt/zhdd"
 

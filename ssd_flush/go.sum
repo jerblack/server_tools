@@ -1,4 +1,2 @@
-github.com/jerblack/base v0.0.0-20210727091856-d42f249e3ce7 h1:4XztF5VgkIsiuT3uBuCF5Ck9KLwt5dJBfScR0qDT23g=
-github.com/jerblack/base v0.0.0-20210727091856-d42f249e3ce7/go.mod h1:tFNXoWR0pjT0i9rslF6rY6a+VBtHeSENB59cAgJvuyk=
-github.com/jerblack/base/progress v0.0.0-20210727102933-a832c57fe9fc h1:iPxEFeRqWoiQ6dE4NdGdwhrT9So8rM9AsUBxx3d7KGc=
-github.com/jerblack/base/progress v0.0.0-20210727102933-a832c57fe9fc/go.mod h1:rPTR7vyC/VWeaaJTg4jEytzL0QqEm3Dq2e8NyhELvhY=
+github.com/jerblack/base v0.0.0-20211120051925-803ec5065868 h1:UwxgeHm84hio4nBP5Qf3Tj0QHqlUkdEYJ/15NbTRYnQ=
+github.com/jerblack/base v0.0.0-20211120051925-803ec5065868/go.mod h1:gw/7V+Q94tsc8LvKuPNqOyjG6sOlneMFCdZhwuLJuqA=
