@@ -374,7 +374,7 @@ func connect(conf WgConf) {
 	}
 	p("setting up NAT and port forwarding")
 	enableNat()
-	setLocalDns(conf.dns)
+	//setLocalDns(conf.dns)
 	go updateDnsHostname()
 
 	p("checking connection every 60 seconds")
@@ -443,6 +443,9 @@ func setLocalDns(dnsServer string) {
 func enableNat() {
 	cmd := fmt.Sprintf("iptables -t nat -A POSTROUTING -o mullvad+ -s %s -j MASQUERADE", networkIdIn)
 	e := run(strings.Split(cmd, " ")...)
+	chkFatal(e)
+	cmd = fmt.Sprintf("iptables -t nat -A POSTROUTING -o mullvad+ -s %s -j MASQUERADE", "10.0.0.0/16")
+	e = run(strings.Split(cmd, " ")...)
 	chkFatal(e)
 	for _, forward := range forwards {
 		for _, f := range forward {
