@@ -10,9 +10,8 @@ import (
 )
 
 var (
-	sonarrCompose = "/x/.config/docker/sonarr/docker-compose.yml"
-	snapraidConf  = "/etc/snapraid.conf"
-	snapraidBin   = "/usr/local/bin/snapraid"
+	snapraidConf = "/etc/snapraid.conf"
+	snapraidBin  = "/usr/local/bin/snapraid"
 )
 
 func isSnapraidRunning() bool {
@@ -48,23 +47,6 @@ func amIRunning() bool {
 	chk(e)
 	pids := strings.Split(string(out), " ")
 	return len(pids) > 1
-}
-func stopSonarr() {
-	p("stopping sonarr.service")
-	cmd := exec.Command("/usr/bin/systemctl", "stop", "sonarr.service")
-	e := cmd.Run()
-	chk(e)
-	// should be stopped, but make sure
-	p("ensuring sonarr container is stopped")
-	cmd = exec.Command("/usr/bin/docker", "-f", sonarrCompose, "down")
-	e = cmd.Run()
-	chk(e)
-}
-func startSonarr() {
-	p("starting sonarr.service")
-	cmd := exec.Command("/usr/bin/systemctl", "start", "sonarr.service")
-	e := cmd.Run()
-	chk(e)
 }
 
 func verifySnapraidConf() error {
@@ -189,7 +171,6 @@ func main() {
 		p("snapraid_mgr: snapraid is already running")
 		os.Exit(0)
 	}
-	//stopSonarr()
 	waitForSsdFlush()
 	e := runSsdFlush()
 	if e != nil {
@@ -211,8 +192,6 @@ func main() {
 		chk(e)
 		os.Exit(1)
 	}
-	//startSonarr()
-
 }
 
 var (
