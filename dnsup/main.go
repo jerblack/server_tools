@@ -33,6 +33,7 @@ var (
 	possibleConfs = []string{
 		"/run/secrets/dnsup.conf",
 		"/etc/dnsup.conf",
+		"/config/dnsup.conf",
 	}
 
 	apiKey, apiMail  string
