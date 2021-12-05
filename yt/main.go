@@ -14,11 +14,11 @@ import (
 )
 
 var (
-	downloadArchive = "/w/.config/yt/downloads.yt"
+	downloadArchive = "/config/downloads.yt"
 	rclonePath      = "google:go/src/server_tools/yt/"
-	rcloneConfig    = "/w/.config/yt/rclone.conf"
+	rcloneConfig    = "/config/rclone.conf"
 	rclone          = "/usr/bin/rclone"
-	config          = "/w/.config/yt/ytdl.conf"
+	config          = "/config/ytdl.conf"
 	playlists       = map[string]string{
 		"Paul Dinning":    "https://www.youtube.com/playlist?list=UUPJXfmxMYAoH02CFudZxmgg",
 		"Handsome Nature": "https://www.youtube.com/playlist?list=UUJLIwYrmwgwbTzgmB5yVc7Q",
