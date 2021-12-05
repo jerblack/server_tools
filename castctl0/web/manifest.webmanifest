@@ -1,0 +1,23 @@
+{
+  "short_name": "castctl",
+  "name": "castctl",
+  "description": "ChromeCast Remote Control",
+  "icons": [
+    {
+      "src": "favicon-500.png",
+      "type": "image/png",
+      "sizes": "500x500"
+    },
+    {
+      "src": "favicon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#000000",
+  "display": "fullscreen",
+  "scope": "/",
+  "theme_color": "#000000"
+
+}
