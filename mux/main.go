@@ -19,6 +19,7 @@ import (
 )
 
 /*
+	-------------------
 	remux or convert all files into single mkv with known compatible video and audio streams and no external subtitles.
 		requires: ffmpeg ffprobe mkvtoolnix
 		remux reasons
@@ -26,10 +27,8 @@ import (
 			external subtitle files
 			stream types out of order: video -> audio -> subtitles
 			video stream not first strewm
-			audio out of order
-				english or undefined, non-english
-		    subtitles out of order
-				english forced, english, non-english forced, non-english
+			subtitles out of order
+				forced, unforced
 		convert reasons
 			audio not in one of the following formats
 				"aac", "ac3", "eac3", "flac", "alac", "dts", "mp3", "truehd"
@@ -453,14 +452,11 @@ type Job struct {
 	reStream     bool   //   job is restarted and needs streams refreshed
 	failed       bool   //  mark job failed for -xe exit on error
 
-	streams       []*Stream //	 all streams found for job, internal and external
-	vidStream     []*Stream //  video stream in primary main file
-	audioEng      []*Stream //  internal english audio streams
-	audioForn     []*Stream //  internal non-english audio streams
-	subEng        []*Stream //  internal subtitle streams in english or undefined language
-	subEngForced  []*Stream //  internal subtitle streams with forced attribute set
-	subForn       []*Stream //  internal subtitle stream, not english or undefined
-	subFornForced []*Stream //  internal subtitle stream, not english or undefined
+	streams         []*Stream //	 all streams found for job, internal and external
+	vidStream       []*Stream //  video stream in primary main file
+	audioStream     []*Stream //  internal audio streams
+	subStream       []*Stream //  internal subtitle streams
+	subStreamForced []*Stream //  internal subtitle streams with forced attribute set
 
 	cmdLine []string
 }
@@ -630,11 +626,9 @@ func (j *Job) getStreams(path string) (error, []*Stream) {
 }
 func (j *Job) parseStreams() {
 	j.vidStream = []*Stream{}
-	j.audioEng = []*Stream{}
-	j.audioForn = []*Stream{}
-	j.subEng = []*Stream{}
-	j.subEngForced = []*Stream{}
-	j.subForn = []*Stream{}
+	j.audioStream = []*Stream{}
+	j.subStream = []*Stream{}
+	j.subStreamForced = []*Stream{}
 
 	for n, s := range j.streams {
 		if s.CodecType == "video" && !isAny(s.CodecName, "mjpeg", "bmp", "png") {
@@ -655,11 +649,7 @@ func (j *Job) parseStreams() {
 				s.elementaryStream = fmt.Sprintf("%s.%d.ac3", j.baseWithPath, n)
 				j.mux = true
 			}
-			if isAny(s.Tags.Language, engLangs...) {
-				j.audioEng = append(j.audioEng, s)
-			} else {
-				j.audioForn = append(j.audioForn, s)
-			}
+			j.audioStream = append(j.audioStream, s)
 		}
 		if s.CodecType == "subtitle" {
 			if s.CodecName == "mov_text" {
@@ -669,24 +659,16 @@ func (j *Job) parseStreams() {
 				s.elementaryStream = fmt.Sprintf("%s.%d.srt", j.baseWithPath, n)
 				j.mux = true
 			}
-			if isAny(s.Tags.Language, engLangs...) {
-				if s.Disposition.Forced == 1 {
-					j.subEngForced = append(j.subEngForced, s)
-				} else {
-					j.subEng = append(j.subEng, s)
-				}
+			if s.Disposition.Forced == 1 {
+				j.subStreamForced = append(j.subStreamForced, s)
 			} else {
-				if s.Disposition.Forced == 1 {
-					j.subFornForced = append(j.subFornForced, s)
-				} else {
-					j.subForn = append(j.subForn, s)
-				}
+				j.subStream = append(j.subStream, s)
 			}
 		}
 	}
 
 	var allStreams []*Stream
-	for _, streams := range [][]*Stream{j.vidStream, j.audioEng, j.audioForn, j.subEngForced, j.subEng, j.subFornForced, j.subForn} {
+	for _, streams := range [][]*Stream{j.vidStream, j.audioStream, j.subStreamForced, j.subStream} {
 		allStreams = append(allStreams, streams...)
 	}
 
@@ -763,8 +745,7 @@ func (j *Job) buildCmdLine() {
 		}
 	}
 
-	allAudio := append(j.audioEng, j.audioForn...)
-	for _, s := range allAudio {
+	for _, s := range j.audioStream {
 		if s.elementaryStream != "" {
 			if s.Tags.Language == "" {
 				add(s.elementaryStream)
@@ -775,9 +756,8 @@ func (j *Job) buildCmdLine() {
 			add("-S", "-D", "-a", fmt.Sprintf("%d", s.Index), j.video)
 		}
 	}
+	allSubs := append(j.subStreamForced, j.subStreamForced...)
 
-	allSubs := append(j.subEngForced, j.subEng...)
-	allSubs = append(allSubs, j.subForn...)
 	for _, s := range allSubs {
 		if s.elementaryStream != "" {
 			if s.Tags.Language == "" {
@@ -797,28 +777,16 @@ func (j *Job) printStreams() {
 	for _, s := range j.vidStream {
 		fmt.Printf("%+v\n", s)
 	}
-	p("audioEng")
-	for _, s := range j.audioEng {
+	p("audioStream")
+	for _, s := range j.audioStream {
 		fmt.Printf("%+v\n", s)
 	}
-	p("audioForn")
-	for _, s := range j.audioForn {
+	p("subStreamForced")
+	for _, s := range j.subStreamForced {
 		fmt.Printf("%+v\n", s)
 	}
-	p("subEngForced")
-	for _, s := range j.subEngForced {
-		fmt.Printf("%+v\n", s)
-	}
-	p("subEng")
-	for _, s := range j.subEng {
-		fmt.Printf("%+v\n", s)
-	}
-	p("subFornForced")
-	for _, s := range j.subFornForced {
-		fmt.Printf("%+v\n", s)
-	}
-	p("subForn")
-	for _, s := range j.subForn {
+	p("subStream")
+	for _, s := range j.subStream {
 		fmt.Printf("%+v\n", s)
 	}
 	p(`\\\\\\\\\\\\\\\\\\\\\\\\\`)
