@@ -50,8 +50,8 @@ var (
 	rars      map[string][]string
 	zips      map[string][]string
 	encs      map[string][]string
-	junkExts  = []string{".sfv", ".nfo", ".srr", ".url", ".diz", ".nzb", ".par2",
-		".ds_store", "thumbs.db", ".png", ".jpg", ".jpeg", ".txt", ".gif"}
+	junkExts  = []string{".sfv", ".srr", ".url", ".diz", ".nzb", ".par2",
+		".ds_store", "thumbs.db"}
 	junkSubs    = []string{"sample", "screens", "proof"}
 	junkFiles   map[string][]string
 	junkFolders map[string][]string
@@ -402,8 +402,8 @@ var help = `extract [-h][-a][-j][folder path]
   -j  DO NOT delete junk files after extract.
       These files are deleted by default.
       files:
-        ".sfv", ".nfo", ".srr", ".url", ".diz", ".nzb", ".par2", ".ds_store", 
-        "thumbs.db", ".png", ".jpg", ".jpeg", ".txt", ".gif", "*sample*"
+        ".sfv", ".srr", ".url", ".diz", ".nzb", ".par2", ".ds_store", 
+        "thumbs.db", "*sample*"
       folders:
         "sample", "screens", "proof"
    extract runs recursively in the current folder by default unless a folder path is provided, 
