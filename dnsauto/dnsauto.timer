@@ -1,0 +1,11 @@
+# lives in /etc/systemd/system/dnsauto.timer
+
+[Unit]
+Description=Periodically runs the dnsauto service
+
+[Timer]
+Unit=dnsauto.service
+OnCalendar=hourly
+
+[Install]
+WantedBy=multi-user.target

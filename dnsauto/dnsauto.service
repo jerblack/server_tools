@@ -1,0 +1,13 @@
+# lives in /etc/systemd/system/dnsauto.service
+
+[Unit]
+Description=snapraid_mgr
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/dnsauto
+
+
+# systemd logs to journal by default, and all writes to stdout are visible in the journal
+# run the following to view logs for this service:
+#       journalctl -u snapraid_mgr.service
