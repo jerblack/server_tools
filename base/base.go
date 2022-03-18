@@ -158,6 +158,20 @@ func IsDirEmpty(name string) bool {
 	}
 	return false
 }
+func GetLegalFilename(str string) string {
+	reControlCharsRegex := regexp.MustCompile("[\u0000-\u001f\u0080-\u009f]")
+
+	// https://github.com/sindresorhus/filename-reserved-regex/blob/master/index.js
+	filenameReservedRegex := regexp.MustCompile(`[<>:"/\\|?*\x00-\x1F]`)
+	filenameReservedWindowsNamesRegex := regexp.MustCompile(`(?i)^(con|prn|aux|nul|com[0-9]|lpt[0-9])$`)
+
+	str = filenameReservedRegex.ReplaceAllString(str, "-")
+	str = reControlCharsRegex.ReplaceAllString(str, "-")
+	if filenameReservedWindowsNamesRegex.MatchString(str) {
+		str = str + "!"
+	}
+	return str
+}
 func GetAltPath(path string) string {
 	i := 1
 	newPath := path
