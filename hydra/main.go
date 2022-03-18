@@ -504,9 +504,9 @@ func (d *Deluge) linkFinishedTorrents() {
 		}
 		p("torrent finished on %s: %s", d.name, dt.name)
 		e := dt.linkFiles()
-		chkFatal(e)
+		chk(e)
 		e = dt.moveStorage()
-		chkFatal(e)
+		chk(e)
 		fin = append(fin, dt.name)
 	}
 	d.finished = fin
@@ -603,9 +603,7 @@ func (dt *DelugeTorrent) linkFiles() error {
 		chkFatal(e)
 		if !fileExists(dst) {
 			e = os.Link(outerSrc, dst)
-			if e != nil {
-				return e
-			}
+			chk(e)
 		}
 	}
 	return nil

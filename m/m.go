@@ -42,9 +42,9 @@ var (
 	}
 	procFolder = "/x/_proc"
 
-	sortedFolders = []string{"4K", "action_adventure_sci-fi", "animated", "before_1980", "before_2000", "comedy",
+	sortedFolders = []string{"4K", "4K_docs", "action_adventure_sci-fi", "animated", "before_1980", "before_2000", "comedy",
 		"comic_book", "docs", "drama", "foreign", "hallmark_family", "horror", "kids", "martial_arts",
-		"new_releases", "standup_comedy", "unlisted"}
+		"new_releases", "politics", "standup_comedy", "unlisted"}
 	sortedFolder = "/z/~movies"
 	apiKey       string
 	genres       = map[int]string{
@@ -396,7 +396,7 @@ func main() {
 			} else {
 				fmt.Println("| original name kept")
 				if len(names) > 0 {
-					searchName = names[1]
+					searchName = names[0]
 				}
 			}
 
@@ -413,7 +413,9 @@ func main() {
 			fmt.Printf("| title: %s (%d)\n", tmdb.OriginalTitle, tmdb.ReleaseDate.Year())
 			fmt.Printf("| genres: %s\n", strings.Join(tmdb.genres(), ", "))
 			fmt.Printf("| overview: %s\n", tmdb.Overview)
-			guess = recommends[tmdb.GenreIds[0]]
+			if len(tmdb.GenreIds) > 0 {
+				guess = recommends[tmdb.GenreIds[0]]
+			}
 			if tmdb.ReleaseDate.Year() < 1980 {
 				guess = "before_1980"
 			} else if tmdb.ReleaseDate.Year() < 2000 {
@@ -423,6 +425,7 @@ func main() {
 			if title != tmdb.OriginalTitle {
 				fmt.Printf("tmdb title different from current title :\n")
 				tmdbFname := fmt.Sprintf("%s (%d).mkv", tmdb.OriginalTitle, tmdb.ReleaseDate.Year())
+				tmdbFname = getLegalFilename(tmdbFname)
 				prompt := fmt.Sprintf("| rename %s -> %s ? [1,0,y,N or Enter to skip] ", fName, tmdbFname)
 				if getYesNo(prompt) {
 					newPath := filepath.Join(filepath.Dir(searchName), tmdbFname)
@@ -447,7 +450,11 @@ func main() {
 			}
 		}
 		if strings.Contains(mkv, "2160") || strings.Contains(strings.ToLower(mkv), "4k") {
-			guess = "4K"
+			if tmdb != nil && isAny("Documentary", tmdb.genres()...) {
+				guess = "4K_docs"
+			} else {
+				guess = "4K"
+			}
 		}
 
 		fmt.Println("folder options :")
@@ -500,14 +507,15 @@ func add(arr *[]string, items ...string) {
 }
 
 var (
-	p              = base.P
-	chk            = base.Chk
-	chkFatal       = base.ChkFatal
-	arrayIdx       = base.ArrayIdx
-	run            = base.Run
-	rmEmptyFolders = base.RmEmptyFolders
-	printCmd       = base.PrintCmd
-	mvFile         = base.MvFile
-	fileExists     = base.FileExists
-	isAny          = base.IsAny
+	p                = base.P
+	chk              = base.Chk
+	chkFatal         = base.ChkFatal
+	arrayIdx         = base.ArrayIdx
+	run              = base.Run
+	rmEmptyFolders   = base.RmEmptyFolders
+	printCmd         = base.PrintCmd
+	mvFile           = base.MvFile
+	fileExists       = base.FileExists
+	isAny            = base.IsAny
+	getLegalFilename = base.GetLegalFilename
 )
