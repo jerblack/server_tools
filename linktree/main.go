@@ -24,7 +24,7 @@ iterate through each folder given in args
 
 */
 const (
-	srcBase = "/z/tor_done"
+	srcBase = "/z/.seeds"
 	dstBase = "/z/_proc"
 )
 
@@ -41,7 +41,7 @@ func getArgs() {
 		src := filepath.Join(srcBase, arg)
 		dst := filepath.Join(dstBase, arg)
 		if !fileExists(src) {
-			fmt.Printf("error: specified sourse path does not exist: %s\n", src)
+			fmt.Printf("error: specified source path does not exist: %s\n", src)
 			os.Exit(1)
 		}
 		srcs = append(srcs, src)
